@@ -1,10 +1,12 @@
 "use client";
 
 import { siteConfig } from "@/data/siteConfig";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { MessageCircle } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 export function WhatsAppFloatButton() {
+  useStorefrontStore((s) => s.config);
   const pathname = usePathname();
 
   // If on checkout or order success, don't obstruct payment UI

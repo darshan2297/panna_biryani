@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Order, OrderStatus } from "@/types";
 import { formatINR, cn } from "@/lib/utils";
 import { siteConfig } from "@/data/siteConfig";
@@ -14,6 +15,8 @@ import {
   ArrowLeft,
   Sparkles,
 } from "lucide-react";
+
+const CRM_API_BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
 
 const TIMELINE_STEPS: {
   status: OrderStatus;
@@ -59,7 +62,39 @@ const TIMELINE_STEPS: {
   },
 ];
 
-export function OrderTrackerClient({ order }: { order: Order }) {
+export function OrderTrackerClient({ order: initialOrder }: { order: Order }) {
+  const [order, setOrder] = useState<Order>(initialOrder);
+
+  // Poll the CRM backend for live kitchen status updates so status changes
+  // made in the CRM (Live Kitchen Orders) reflect on the customer website.
+  useEffect(() => {
+    if (!order.crmOrderNumber) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`${CRM_API_BASE}/public/orders/track/${order.crmOrderNumber}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const status = json?.data?.order_status as OrderStatus | undefined;
+        if (status && status !== order.orderStatus) {
+          setOrder((prev) => ({
+            ...prev,
+            orderStatus: status,
+            updatedAt: new Date().toISOString(),
+          }));
+        }
+      } catch {
+        // Network hiccup — keep showing last known status
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 10000);
+    return () => clearInterval(interval);
+  }, [order.crmOrderNumber, order.orderStatus]);
+
   // Simulate active progress step based on orderStatus
   const statusHierarchy: Record<OrderStatus, number> = {
     PENDING: 0,
@@ -88,7 +123,7 @@ export function OrderTrackerClient({ order }: { order: Order }) {
           </Link>
 
           <span className="text-xs font-mono font-bold bg-white border border-panna-border px-3 py-1 rounded-full text-panna-deep">
-            {order.orderNumber}
+            {order.crmOrderNumber || order.orderNumber}
           </span>
         </div>
 

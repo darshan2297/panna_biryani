@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createOrder } from "@/services/orders/orderService";
 import { activePaymentProvider } from "@/services/payments/paymentProvider";
 import { getWebsiteShopOpen } from "@/services/shopStatus";
+import { hydrateServerStorefront } from "@/services/storefront/serverConfig";
 
 // Strict Zod schema for checkout submission
 const checkoutSchema = z.object({
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
 
     // Shop open/closed gate controlled from CRM
     const shopOpen = await getWebsiteShopOpen();
+    await hydrateServerStorefront();
     if (!shopOpen) {
       return NextResponse.json(
         { success: false, error: "We are currently CLOSED and not accepting orders. Please check back during shop hours." },

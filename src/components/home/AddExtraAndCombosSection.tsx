@@ -2,16 +2,22 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { combos, extras } from "@/data/products";
+import { useStorefrontStore, getStorefrontImage } from "@/store/useStorefrontStore";
 import { useCartStore } from "@/store/useCartStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { formatINR } from "@/lib/utils";
-import { ShoppingBag, Plus } from "lucide-react";
+import { ShoppingBag, Plus, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 export function AddExtraAndCombosSection() {
+  const combos = useStorefrontStore((s) => s.combos);
+  const extras = useStorefrontStore((s) => s.extras);
+  const storeConfig = useStorefrontStore((s) => s.config);
   const { addComboItem, addExtraItem, setCartDrawerOpen } = useCartStore();
+  const { isOpen, guard } = useShopGate();
 
-  const handleAddCombo = (combo: (typeof combos)[0]) => {
+  const handleAddCombo = (combo: (typeof combos)[number]) => {
+    if (!guard()) return;
     addComboItem(combo, 1);
     toast.success(`Added ${combo.name} to cart!`, {
       action: {
@@ -21,7 +27,8 @@ export function AddExtraAndCombosSection() {
     });
   };
 
-  const handleAddExtra = (extra: (typeof extras)[0]) => {
+  const handleAddExtra = (extra: (typeof extras)[number]) => {
+    if (!guard()) return;
     addExtraItem(extra, 1);
     toast.success(`Added ${extra.name} to cart!`, {
       action: {
@@ -96,10 +103,15 @@ export function AddExtraAndCombosSection() {
                     <button
                       type="button"
                       onClick={() => handleAddExtra(extra)}
-                      className="w-full bg-[#003F32] hover:bg-[#002e24] text-white text-[11.5px] sm:text-[12px] font-bold py-1.5 px-2 rounded-lg transition-all active:scale-95 shadow-2xs hover:shadow-xs flex items-center justify-center gap-1 cursor-pointer select-none"
+                      disabled={!isOpen}
+                      className="w-full bg-[#003F32] hover:bg-[#002e24] disabled:bg-zinc-400 disabled:cursor-not-allowed text-white text-[11.5px] sm:text-[12px] font-bold py-1.5 px-2 rounded-lg transition-all active:scale-95 shadow-2xs hover:shadow-xs flex items-center justify-center gap-1 cursor-pointer select-none"
                     >
-                      <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                      <span>Add</span>
+                      {isOpen ? (
+                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 stroke-[2.5]" />
+                      )}
+                      <span>{isOpen ? "Add" : "Closed"}</span>
                     </button>
                   </div>
                 </div>
@@ -169,10 +181,15 @@ export function AddExtraAndCombosSection() {
                     <button
                       type="button"
                       onClick={() => handleAddCombo(combo)}
-                      className="mt-1.5 w-full bg-[#003F32] hover:bg-[#002e24] text-white text-[12px] sm:text-[13px] font-bold py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] shadow-sm hover:shadow-md cursor-pointer group/combo select-none"
+                      disabled={!isOpen}
+                      className="mt-1.5 w-full bg-[#003F32] hover:bg-[#002e24] disabled:bg-zinc-400 disabled:cursor-not-allowed text-white text-[12px] sm:text-[13px] font-bold py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] shadow-sm hover:shadow-md cursor-pointer group/combo select-none"
                     >
-                      <ShoppingBag className="w-3.5 h-3.5 stroke-[2.2] text-[#E8B94A] transition-transform group-hover/combo:scale-110" />
-                      <span>Add to Cart</span>
+                      {isOpen ? (
+                        <ShoppingBag className="w-3.5 h-3.5 stroke-[2.2] text-[#E8B94A] transition-transform group-hover/combo:scale-110" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5" />
+                      )}
+                      <span>{isOpen ? "Add to Cart" : "Shop Closed"}</span>
                     </button>
                   </div>
                 </div>
@@ -183,6 +200,7 @@ export function AddExtraAndCombosSection() {
           {/* ============================================================ */}
           {/* PANEL 3: First Order Special Gift! (Right side)              */}
           {/* ============================================================ */}
+          {storeConfig && !storeConfig.gift_section_enabled ? null : (
           <div className="lg:col-span-3 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 bg-[#041c14] border border-[#e8b94a]/40 w-full group">
             <Link
               href="/menu"
@@ -190,7 +208,7 @@ export function AddExtraAndCombosSection() {
               aria-label="First Order Special Gift! Order directly from our website and get a FREE Dessert on your first order. Order Now."
             >
               <Image
-                src="/offers/first-order-gift-banner.jpg"
+                src={getStorefrontImage("gift")}
                 alt="First Order Special Gift! Order directly from our website and get a FREE Dessert on your first order. Order Now."
                 fill
                 priority
@@ -199,6 +217,7 @@ export function AddExtraAndCombosSection() {
               />
             </Link>
           </div>
+          )}
 
 
         </div>

@@ -3,14 +3,16 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { products } from "@/data/products";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { Product, ProductSize } from "@/types";
 import { useCartStore } from "@/store/useCartStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { formatINR, cn } from "@/lib/utils";
-import { ShoppingBag, Plus, Minus } from "lucide-react";
+import { ShoppingBag, Plus, Minus, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 export function SignatureBiryaniSection() {
+  const products = useStorefrontStore((s) => s.products);
   return (
     <section id="signature" className="pt-6 pb-6 bg-[#FAF7F2] select-none">
       <div className="w-full max-w-[1440px] 2xl:max-w-[1850px] 3xl:max-w-[2400px] 4k:max-w-[3200px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 3xl:px-20 4k:px-28">
@@ -57,6 +59,7 @@ function ProductCard({ product }: { product: Product }) {
   const defaultSize = product.sizes.find((s) => s.id === "250g") || product.sizes[0];
   const [selectedSize, setSelectedSize] = useState<ProductSize>(defaultSize);
   const { items, addItem, updateQuantity, setCartDrawerOpen } = useCartStore();
+  const { isOpen, guard } = useShopGate();
 
   useEffect(() => {
     setMounted(true);
@@ -80,6 +83,7 @@ function ProductCard({ product }: { product: Product }) {
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!guard()) return;
     addItem(product, selectedSize, [], 1);
     toast.success(`Added 1 × ${product.name} (${selectedSize.label}) to cart!`, {
       action: {
@@ -94,6 +98,7 @@ function ProductCard({ product }: { product: Product }) {
   const handleIncrement = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!guard()) return;
     if (matchingItem) {
       updateQuantity(matchingItem.id, matchingItem.quantity + 1);
     } else {
@@ -218,7 +223,17 @@ function ProductCard({ product }: { product: Product }) {
 
       {/* Modern 1-Click Action Row: Single Click Add or In-Button Stepper */}
       <div className="p-3.5 pt-0">
-        {count === 0 ? (
+        {!isOpen ? (
+          <button
+            type="button"
+            disabled
+            className="w-full h-[46px] sm:h-[48px] rounded-xl font-bold text-[12.5px] sm:text-[13.5px] tracking-wide text-white bg-zinc-400 cursor-not-allowed flex items-center justify-center gap-2 select-none"
+            title="Shop is currently closed"
+          >
+            <Clock className="w-4 h-4" />
+            <span>Shop Closed</span>
+          </button>
+        ) : count === 0 ? (
           <button
             type="button"
             onClick={handleAddToCart}

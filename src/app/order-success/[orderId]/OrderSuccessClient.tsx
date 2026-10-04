@@ -55,7 +55,7 @@ export function OrderSuccessClient({ order }: { order: Order }) {
                 Order Number
               </span>
               <span className="font-mono text-sm font-black text-panna-deep">
-                {order.orderNumber}
+                {order.crmOrderNumber || order.orderNumber}
               </span>
             </div>
             <div className="border-l border-panna-border pl-6">

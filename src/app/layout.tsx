@@ -7,6 +7,8 @@ import { CartDrawer } from "@/components/cart/CartDrawer";
 import { MobileStickyCart } from "@/components/cart/MobileStickyCart";
 import { WhatsAppFloatButton } from "@/components/common/WhatsAppFloatButton";
 import { RestaurantJsonLd } from "@/components/seo/JsonLd";
+import { ShopStatusProvider } from "@/components/shop/ShopStatusProvider";
+import { StorefrontLoader } from "@/components/common/StorefrontLoader";
 import { Toaster } from "sonner";
 
 const outfit = Outfit({
@@ -118,12 +120,15 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex flex-col bg-[#faf7f2] text-panna-charcoal font-sans antialiased selection:bg-panna-gold selection:text-panna-deep">
         <Toaster position="top-center" richColors closeButton />
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
-        <CartDrawer />
-        <MobileStickyCart />
-        <WhatsAppFloatButton />
+        <ShopStatusProvider>
+          <StorefrontLoader />
+          <Header />
+          <main className="flex-1">{children}</main>
+          <Footer />
+          <CartDrawer />
+          <MobileStickyCart />
+          <WhatsAppFloatButton />
+        </ShopStatusProvider>
       </body>
     </html>
   );

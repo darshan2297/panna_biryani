@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import { Leaf, ShieldCheck, Ban, CheckCircle2, ArrowRight } from "lucide-react";
+import { useStorefrontStore, getStorefrontImage } from "@/store/useStorefrontStore";
 
 export function HeroSection() {
+  useStorefrontStore((s) => s.config);
   return (
     <section
       aria-label="Panna Biryani introduction"
@@ -10,7 +14,7 @@ export function HeroSection() {
     >
       {/* Mobile: portrait biryani image fills full viewport */}
       <Image
-        src="/hero/panna-hero-mobile.jpg"
+        src={getStorefrontImage("bannerMobile")}
         alt=""
         fill
         preload
@@ -22,7 +26,7 @@ export function HeroSection() {
           object-[38%_center] keeps the biryani pot as visible as possible
           while leaving dark-green space on the left for text contrast. */}
       <Image
-        src="/hero/panna-hero-banner.jpg"
+        src={getStorefrontImage("banner")}
         alt=""
         fill
         sizes="100vw"

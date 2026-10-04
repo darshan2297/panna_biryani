@@ -5,8 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Product, ProductSize } from "@/types";
-import { extras } from "@/data/products";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { useCartStore } from "@/store/useCartStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { formatINR, cn } from "@/lib/utils";
 import {
   ShoppingBag,
@@ -26,7 +27,9 @@ interface Props {
   relatedProducts: Product[];
 }
 
-export function ProductDetailClient({ product, relatedProducts }: Props) {
+export function ProductDetailClient({
+  product, relatedProducts }: Props) {
+  const extras = useStorefrontStore((st) => st.extras);
   const router = useRouter();
   const defaultSize = product.sizes.find((s) => s.id === "500g") || product.sizes[0];
   const [selectedSize, setSelectedSize] = useState<ProductSize>(defaultSize);
@@ -40,6 +43,7 @@ export function ProductDetailClient({ product, relatedProducts }: Props) {
   const [isAdding, setIsAdding] = useState(false);
 
   const { addItem, setCartDrawerOpen } = useCartStore();
+  const { isOpen, guard } = useShopGate();
 
   const handleExtraToggle = (extraId: string) => {
     setSelectedExtras((prev) => {
@@ -72,6 +76,7 @@ export function ProductDetailClient({ product, relatedProducts }: Props) {
   };
 
   const handleAddToCart = () => {
+    if (!guard()) return;
     setIsAdding(true);
     const extrasPayload = prepareExtrasPayload();
     addItem(product, selectedSize, extrasPayload, quantity);
@@ -87,6 +92,7 @@ export function ProductDetailClient({ product, relatedProducts }: Props) {
   };
 
   const handleBuyNow = () => {
+    if (!guard()) return;
     const extrasPayload = prepareExtrasPayload();
     addItem(product, selectedSize, extrasPayload, quantity);
     router.push("/checkout");
@@ -329,20 +335,21 @@ export function ProductDetailClient({ product, relatedProducts }: Props) {
               <button
                 type="button"
                 onClick={handleAddToCart}
-                disabled={isAdding}
-                className="w-full flex items-center justify-center gap-2 bg-[#0c281e] hover:bg-[#143a2d] text-panna-gold font-bold py-3.5 px-6 rounded-xl border border-panna-gold/50 shadow-md text-sm uppercase tracking-wider transition-all active:scale-98 cursor-pointer"
+                disabled={isAdding || !isOpen}
+                className="w-full flex items-center justify-center gap-2 bg-[#0c281e] hover:bg-[#143a2d] disabled:bg-zinc-400 disabled:cursor-not-allowed text-panna-gold font-bold py-3.5 px-6 rounded-xl border border-panna-gold/50 shadow-md text-sm uppercase tracking-wider transition-all active:scale-98 cursor-pointer"
               >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Add to Cart</span>
+                {isOpen ? <ShoppingBag className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                <span>{isOpen ? "Add to Cart" : "Shop Closed"}</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleBuyNow}
-                className="w-full flex items-center justify-center gap-2 bg-panna-gold hover:bg-[#d8af37] text-panna-deep font-bold py-3.5 px-6 rounded-xl shadow-md text-sm uppercase tracking-wider transition-all active:scale-98 cursor-pointer"
+                disabled={!isOpen}
+                className="w-full flex items-center justify-center gap-2 bg-panna-gold hover:bg-[#d8af37] disabled:bg-zinc-400 disabled:cursor-not-allowed text-panna-deep font-bold py-3.5 px-6 rounded-xl shadow-md text-sm uppercase tracking-wider transition-all active:scale-98 cursor-pointer"
               >
-                <span>Buy Now</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>{isOpen ? "Buy Now" : "Closed"}</span>
+                {isOpen ? <ArrowRight className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
               </button>
             </div>
 

@@ -1,6 +1,9 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useStorefrontStore, getStorefrontImage } from "@/store/useStorefrontStore";
 
 interface BrandLogoProps {
   size?: "sm" | "md" | "lg" | "xl" | "header" | "footer";
@@ -19,6 +22,7 @@ export function BrandLogo({
   linkToHome = true,
   priority = false,
 }: BrandLogoProps) {
+  useStorefrontStore((s) => s.config);
   const sizeMap = {
     sm: "w-11 h-auto",
     md: "w-16 h-auto",
@@ -31,7 +35,7 @@ export function BrandLogo({
   const content = (
     <div className={cn("inline-flex items-center gap-3 select-none group", className)}>
       <Image
-        src="/brand/panna-logo.png"
+        src={getStorefrontImage("logo")}
         alt="Panna Royal Dum Biryani - Made For Sharing"
         width={210}
         height={220}

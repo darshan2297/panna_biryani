@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { useCartStore } from "@/store/useCartStore";
 import { useUserSessionStore } from "@/store/useUserSessionStore";
+import { useShopStatus } from "@/components/shop/ShopStatusProvider";
 import { formatINR, cn } from "@/lib/utils";
 import {
   ShoppingBag,
@@ -14,6 +15,7 @@ import {
   User,
   Menu,
   X,
+  AlertCircle,
 } from "lucide-react";
 
 export function Header() {
@@ -25,12 +27,14 @@ export function Header() {
 
   const { getTotal, getItemCount, setCartDrawerOpen } = useCartStore();
   const { user, isLoggedIn } = useUserSessionStore();
+  const { isOpen, businessHours, closedMessage, hydrated } = useShopStatus();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const hasActiveSession = mounted && isLoggedIn();
+  const showClosed = mounted && hydrated && !isOpen;
 
   const totalAmount = mounted ? getTotal() : 0;
   const itemCount = mounted ? getItemCount() : 0;
@@ -53,6 +57,7 @@ export function Header() {
   };
 
   return (
+    <>
     <header className="sticky top-0 z-50 w-full h-[64px] bg-[#00241b] border-b border-[#e8b94a]/30 text-white select-none overflow-visible">
       <div className="w-full h-full max-w-[1440px] 2xl:max-w-[1850px] 3xl:max-w-[2400px] 4k:max-w-[3200px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 3xl:px-20 4k:px-28 relative flex items-center justify-between">
         {/* Logo — on mobile when menu opens, shrink smoothly to fit inside 64px header so it doesn't overlap user details */}
@@ -121,6 +126,43 @@ export function Header() {
               <Search className="w-4 h-4" />
             </button>
           </form>
+
+          {/* Shop Open / Closed status pill */}
+          <div
+            className={cn(
+              "hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold transition-colors",
+              !mounted || !hydrated
+                ? "border-white/20 text-white/70"
+                : showClosed
+                ? "border-rose-400/60 bg-rose-500/15 text-rose-200"
+                : "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+            )}
+            title={
+              showClosed
+                ? businessHours.next_open_text
+                  ? `Closed • Opens ${businessHours.next_open_text}`
+                  : "Currently closed"
+                : `Open • ${businessHours.display_hours}`
+            }
+          >
+            <span
+              className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                !mounted || !hydrated
+                  ? "bg-white/40"
+                  : showClosed
+                  ? "bg-rose-400"
+                  : "bg-emerald-400 animate-pulse"
+              )}
+            />
+            {!mounted || !hydrated ? (
+              <span>Hours</span>
+            ) : showClosed ? (
+              <span>Closed</span>
+            ) : (
+              <span>Open Now</span>
+            )}
+          </div>
 
           {/* User Icon — only displayed when a user session is active */}
           {hasActiveSession ? (
@@ -282,5 +324,14 @@ export function Header() {
         </div>
       )}
     </header>
+
+    {/* Closed banner — shown under the header on all pages while the shop is closed */}
+    {showClosed && (
+      <div className="sticky top-[64px] z-40 w-full bg-rose-700 text-white text-center text-[12px] sm:text-[13px] font-semibold px-4 py-2 flex items-center justify-center gap-2 shadow-md">
+        <AlertCircle className="w-4 h-4 shrink-0" />
+        <span>{closedMessage || "We are currently closed."}</span>
+      </div>
+    )}
+    </>
   );
 }

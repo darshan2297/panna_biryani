@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { Order, OrderStatus } from "@/types";
 import { formatINR, cn } from "@/lib/utils";
 import { siteConfig } from "@/data/siteConfig";
-import { products } from "@/data/products";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { useCartStore } from "@/store/useCartStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { useUserSessionStore } from "@/store/useUserSessionStore";
 import { toast } from "sonner";
 import {
@@ -36,13 +37,45 @@ interface OrderDetailClientProps {
   initialOrder: Order | null;
 }
 
-export function OrderDetailClient({ orderId, initialOrder }: OrderDetailClientProps) {
+const CRM_API_BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
+
+export function OrderDetailClient({
+  orderId, initialOrder }: OrderDetailClientProps) {
+  const products = useStorefrontStore((st) => st.products);
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [order, setOrder] = useState<Order | null>(initialOrder);
   const [loading, setLoading] = useState(!initialOrder);
 
+  // Poll the CRM backend so kitchen status changes reflect on the invoice page too
+  useEffect(() => {
+    if (!order?.crmOrderNumber) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`${CRM_API_BASE}/public/orders/track/${order.crmOrderNumber}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const status = json?.data?.order_status as OrderStatus | undefined;
+        if (status && status !== order.orderStatus) {
+          setOrder((prev) =>
+            prev ? { ...prev, orderStatus: status, updatedAt: new Date().toISOString() } : prev
+          );
+        }
+      } catch {
+        // ignore transient network errors
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 10000);
+    return () => clearInterval(interval);
+  }, [order?.crmOrderNumber, order?.orderStatus]);
+
   const { addItem, setCartDrawerOpen } = useCartStore();
+  const { guard } = useShopGate();
   const { orders: sessionOrders } = useUserSessionStore();
 
   useEffect(() => {
@@ -201,6 +234,7 @@ export function OrderDetailClient({ orderId, initialOrder }: OrderDetailClientPr
 
   // 1-Click Reorder handler
   const handleReorder = () => {
+    if (!guard()) return;
     let count = 0;
     order.items.forEach((item) => {
       const prod = products.find((p) => p.id === item.productId || p.slug === item.productSlug);

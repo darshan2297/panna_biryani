@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { siteConfig } from "@/data/siteConfig";
+import { useStorefrontStore, getStorefrontImage } from "@/store/useStorefrontStore";
 import {
   Users,
   Phone,
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import { trackEvent } from "@/services/analytics/analyticsService";
 
 export function BulkOrderForm() {
+  useStorefrontStore((s) => s.config);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -63,7 +65,7 @@ export function BulkOrderForm() {
       <div
         className="relative bg-[#091c15] text-white py-16 px-4 sm:px-6 lg:px-8 border-b border-panna-gold/30 overflow-hidden bg-cover bg-center"
         style={{
-          backgroundImage: "url('/bulk/bulk-banner-bg.webp')",
+          backgroundImage: `url('${getStorefrontImage("bulk")}')`,
         }}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-[#061711]/92 via-[#091c15]/85 to-[#061711]/95" />

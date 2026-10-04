@@ -4,9 +4,10 @@ import { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { products, combos, extras } from "@/data/products";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { Product, ProductSize, ComboPack, ExtraItem } from "@/types";
 import { useCartStore } from "@/store/useCartStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { formatINR, cn } from "@/lib/utils";
 import {
   ShoppingBag,
@@ -16,10 +17,14 @@ import {
   Minus,
   Search,
   Users,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
 export function MenuContent() {
+  const products = useStorefrontStore((st) => st.products);
+  const combos = useStorefrontStore((st) => st.combos);
+  const extras = useStorefrontStore((st) => st.extras);
   const searchParams = useSearchParams();
   const initialSearch = searchParams?.get("search") || "";
 
@@ -213,6 +218,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
   const defaultSize = product.sizes.find((s) => s.id === "250g") || product.sizes[0];
   const [selectedSize, setSelectedSize] = useState<ProductSize>(defaultSize);
   const { items, addItem, updateQuantity, setCartDrawerOpen } = useCartStore();
+  const { isOpen, guard } = useShopGate();
 
   useEffect(() => {
     setMounted(true);
@@ -236,6 +242,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!guard()) return;
     addItem(product, selectedSize, [], 1);
     toast.success(`Added 1 × ${product.name} (${selectedSize.label}) to cart!`, {
       action: {
@@ -250,6 +257,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
   const handleIncrement = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!guard()) return;
     if (matchingItem) {
       updateQuantity(matchingItem.id, matchingItem.quantity + 1);
     } else {
@@ -375,7 +383,17 @@ function MenuBiryaniCard({ product }: { product: Product }) {
 
       {/* Modern 1-Click Action Row: Single Click Add or In-Button Stepper */}
       <div className="p-3.5 pt-0">
-        {count === 0 ? (
+        {!isOpen ? (
+          <button
+            type="button"
+            disabled
+            className="w-full h-[46px] sm:h-[48px] rounded-xl font-bold text-[12.5px] sm:text-[13.5px] tracking-wide text-white bg-zinc-400 cursor-not-allowed flex items-center justify-center gap-2 select-none"
+            title="Shop is currently closed"
+          >
+            <Clock className="w-4 h-4" />
+            <span>Shop Closed</span>
+          </button>
+        ) : count === 0 ? (
           <button
             type="button"
             onClick={handleAddToCart}
@@ -416,8 +434,10 @@ function MenuBiryaniCard({ product }: { product: Product }) {
 
 function ComboCard({ combo }: { combo: ComboPack }) {
   const { addComboItem, setCartDrawerOpen } = useCartStore();
+  const { isOpen, guard } = useShopGate();
 
   const handleAdd = () => {
+    if (!guard()) return;
     addComboItem(combo, 1);
     toast.success(`Added ${combo.name} to cart!`, {
       action: {
@@ -477,10 +497,11 @@ function ComboCard({ combo }: { combo: ComboPack }) {
           <button
             type="button"
             onClick={handleAdd}
-            className="py-2.5 px-5 bg-[#003F32] hover:bg-[#002e24] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer select-none"
+            disabled={!isOpen}
+            className="py-2.5 px-5 bg-[#003F32] hover:bg-[#002e24] disabled:bg-zinc-400 disabled:cursor-not-allowed text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer select-none"
           >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Add Combo</span>
+            {isOpen ? <ShoppingBag className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+            <span>{isOpen ? "Add Combo" : "Shop Closed"}</span>
           </button>
         </div>
       </div>
@@ -490,8 +511,10 @@ function ComboCard({ combo }: { combo: ComboPack }) {
 
 function ExtraCard({ extra }: { extra: ExtraItem }) {
   const { addExtraItem, setCartDrawerOpen } = useCartStore();
+  const { isOpen, guard } = useShopGate();
 
   const handleAdd = () => {
+    if (!guard()) return;
     addExtraItem(extra, 1);
     toast.success(`Added ${extra.name} to order!`, {
       action: {
@@ -522,10 +545,11 @@ function ExtraCard({ extra }: { extra: ExtraItem }) {
       <button
         type="button"
         onClick={handleAdd}
-        className="mt-2.5 w-full py-2 bg-[#003F32] hover:bg-[#002e24] text-white font-bold text-xs rounded-lg transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer select-none"
+        disabled={!isOpen}
+        className="mt-2.5 w-full py-2 bg-[#003F32] hover:bg-[#002e24] disabled:bg-zinc-400 disabled:cursor-not-allowed text-white font-bold text-xs rounded-lg transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer select-none"
       >
-        <Plus className="w-3.5 h-3.5" />
-        <span>Add</span>
+        {isOpen ? <Plus className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+        <span>{isOpen ? "Add" : "Closed"}</span>
       </button>
     </div>
   );

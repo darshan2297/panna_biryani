@@ -6,9 +6,12 @@ import { Bike, ShoppingBag, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCartStore } from "@/store/useCartStore";
+import { useStorefrontStore, getDeliverySettings, getStorefrontImage } from "@/store/useStorefrontStore";
 
 export function HowWouldYouLikeToOrderSection() {
   const { setOrderType } = useCartStore();
+  const storefront = useStorefrontStore((s) => s);
+  const ds = { deliveryEnabled: storefront.config ? storefront.config.delivery_enabled : true, pickupEnabled: storefront.config ? storefront.config.pickup_enabled : true, deliveryFee: storefront.config ? Number(storefront.config.delivery_fee) : 49 };
   const [selectedType, setSelectedType] = useState<"delivery" | "pickup">("pickup");
 
   return (
@@ -28,6 +31,7 @@ export function HowWouldYouLikeToOrderSection() {
 
               <div className="grid grid-cols-2 gap-2">
                 {/* 1. Delivery Card */}
+                {ds.deliveryEnabled !== false && (
                 <div
                   onClick={() => {
                     setSelectedType("delivery");
@@ -45,7 +49,7 @@ export function HowWouldYouLikeToOrderSection() {
                   <div className="space-y-0.5 w-full">
                     <h4 className="font-bold text-[13px] text-[#17332C]">Delivery</h4>
                     <p className="text-[11px] text-[#556963] leading-tight">Fast &amp; Safe Delivery</p>
-                    <p className="text-[10.5px] text-[#888]">₹30 – ₹60 (extra)</p>
+                    <p className="text-[10.5px] text-[#888]">₹{ds.deliveryFee} (extra)</p>
                   </div>
                   {/* Preference bar */}
                   <div className="w-full space-y-1 pt-1">
@@ -59,7 +63,9 @@ export function HowWouldYouLikeToOrderSection() {
                   </div>
                 </div>
 
+                )}
                 {/* 2. Pickup Card */}
+                {ds.pickupEnabled !== false && (
                 <div
                   onClick={() => {
                     setSelectedType("pickup");
@@ -95,6 +101,7 @@ export function HowWouldYouLikeToOrderSection() {
                     </div>
                   </div>
                 </div>
+                )}
 
               </div>
 
@@ -107,7 +114,7 @@ export function HowWouldYouLikeToOrderSection() {
           <div
             className="lg:col-span-6 rounded-xl border border-[#4a3424] shadow-md px-5 py-4 overflow-hidden relative flex flex-col justify-center text-white bg-no-repeat"
             style={{
-              backgroundImage: "url('/bulk/bulk-banner-bg.webp')",
+              backgroundImage: `url('${getStorefrontImage("bulk")}')`,
               backgroundSize: "cover",
               backgroundPosition: "center right",
             }}

@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import { siteConfig } from "@/data/siteConfig";
+import { fetchStorefrontConfig } from "@/services/storefront/configService";
 import { Phone, Mail, MapPin, Clock } from "lucide-react";
 import { ContactForm } from "./ContactForm";
 
@@ -9,7 +10,20 @@ export const metadata: Metadata = {
     "Get in touch with Panna Biryani in Vesu, Surat. Contact numbers, WhatsApp support, pickup address, and operating hours for vegetarian dum biryani.",
 };
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const config = await fetchStorefrontConfig();
+  const pickup = {
+    name: siteConfig.pickupLocation.name,
+    address: config?.address_line || siteConfig.pickupLocation.address,
+    area: config?.area || siteConfig.pickupLocation.area,
+    city: config?.city || siteConfig.pickupLocation.city,
+    pincode: config?.pincode || siteConfig.pickupLocation.pincode,
+  };
+  const phone = config?.phone || siteConfig.contact.phoneDisplay;
+  const phoneHref = config?.phone || siteConfig.contact.phone;
+  const email = config?.email || siteConfig.contact.email;
+  const hours = config?.operating_hours || `${siteConfig.operatingHours.displayHours}, ${siteConfig.operatingHours.days}`;
+
   return (
     <div className="bg-[#faf7f2] min-h-screen pb-20">
       {/* Header */}
@@ -43,10 +57,10 @@ export default function ContactPage() {
                   <div>
                     <strong className="block text-panna-deep">Pickup Location:</strong>
                     <span className="text-zinc-600 leading-relaxed">
-                      {siteConfig.pickupLocation.name}
+                      {pickup.name}
                       <br />
-                      {siteConfig.pickupLocation.address}, {siteConfig.pickupLocation.area},{" "}
-                      {siteConfig.pickupLocation.city} - {siteConfig.pickupLocation.pincode}
+                      {pickup.address}, {pickup.area},{" "}
+                      {pickup.city} - {pickup.pincode}
                     </span>
                   </div>
                 </li>
@@ -56,9 +70,7 @@ export default function ContactPage() {
                   <div>
                     <strong className="block text-panna-deep">Kitchen Hours:</strong>
                     <span className="text-zinc-600 leading-relaxed">
-                      {siteConfig.operatingHours.displayHours}
-                      <br />
-                      {siteConfig.operatingHours.days}
+                      {hours}
                     </span>
                   </div>
                 </li>
@@ -68,10 +80,10 @@ export default function ContactPage() {
                   <div>
                     <strong className="block text-panna-deep">Phone Support:</strong>
                     <a
-                      href={`tel:${siteConfig.contact.phone}`}
+                      href={`tel:${phoneHref}`}
                       className="text-panna-forest font-semibold hover:underline"
                     >
-                      {siteConfig.contact.phoneDisplay}
+                      {phone}
                     </a>
                   </div>
                 </li>
@@ -81,10 +93,10 @@ export default function ContactPage() {
                   <div>
                     <strong className="block text-panna-deep">Email:</strong>
                     <a
-                      href={`mailto:${siteConfig.contact.email}`}
+                      href={`mailto:${email}`}
                       className="text-panna-forest font-semibold hover:underline"
                     >
-                      {siteConfig.contact.email}
+                      {email}
                     </a>
                   </div>
                 </li>

@@ -1,5 +1,6 @@
 import { siteConfig } from "@/data/siteConfig";
 import { OrderType } from "@/types";
+import { getServerStorefront } from "@/services/storefront/serverConfig";
 
 export interface DeliveryCalculationResult {
   deliveryFee: number;
@@ -12,7 +13,9 @@ export interface DeliveryCalculationResult {
 }
 
 /**
- * Server-safe delivery fee calculation based on order type, subtotal, and area
+ * Server-safe delivery fee calculation based on order type, subtotal, and area.
+ * Uses CRM storefront config when hydrated (delivery fee + free delivery rule),
+ * falls back to static siteConfig otherwise.
  */
 export function calculateDeliveryFee(
   orderType: OrderType,
@@ -32,12 +35,20 @@ export function calculateDeliveryFee(
     };
   }
 
-  // Free delivery threshold check
-  if (subtotal >= siteConfig.pricingRules.freeDeliveryThreshold) {
+  const srv = getServerStorefront();
+  const fdEnabled = srv.config ? srv.config.free_delivery_enabled : true;
+  const fdThreshold = srv.config
+    ? Number(srv.config.free_delivery_threshold)
+    : siteConfig.pricingRules.freeDeliveryThreshold;
+  const flatFee = srv.config
+    ? Number(srv.config.delivery_fee)
+    : siteConfig.pricingRules.defaultDeliveryFee;
+
+  if (fdEnabled && subtotal >= fdThreshold) {
     return {
       deliveryFee: 0,
       isFreeDelivery: true,
-      freeDeliveryReason: `Free delivery applied (Order ₹${subtotal} >= ₹${siteConfig.pricingRules.freeDeliveryThreshold})`,
+      freeDeliveryReason: `Free delivery applied (Order ₹${subtotal} >= ₹${fdThreshold})`,
       estimatedMinutes: 40,
       minOrderRequired: 199,
       areaFound: true,
@@ -45,33 +56,12 @@ export function calculateDeliveryFee(
     };
   }
 
-  // Find specific zone in Surat
-  if (areaName) {
-    const area = siteConfig.deliveryAreas.find(
-      (a) =>
-        a.name.toLowerCase() === areaName.toLowerCase() ||
-        (pincode && a.pincode === pincode)
-    );
-
-    if (area) {
-      return {
-        deliveryFee: area.deliveryFee,
-        isFreeDelivery: false,
-        estimatedMinutes: area.estimatedMinutes,
-        minOrderRequired: area.minOrder,
-        areaFound: true,
-        areaName: area.name,
-      };
-    }
-  }
-
-  // Default Surat city delivery fee
   return {
-    deliveryFee: siteConfig.pricingRules.defaultDeliveryFee,
+    deliveryFee: flatFee,
     isFreeDelivery: false,
-    estimatedMinutes: 45,
-    minOrderRequired: 249,
-    areaFound: false,
+    estimatedMinutes: 40,
+    minOrderRequired: 199,
+    areaFound: true,
     areaName: areaName || "Surat City",
   };
 }

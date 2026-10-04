@@ -150,6 +150,7 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
+  crmOrderNumber?: string;
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
   estimatedDeliveryMinutes: number;
@@ -238,4 +239,27 @@ export interface SiteConfig {
     facebook: string;
     whatsapp: string;
   };
+}
+
+export interface PublicBusinessHours {
+  is_open: boolean;
+  auto_schedule_enabled: boolean;
+  display_hours: string;
+  status_text: string;
+  next_open_text?: string | null;
+  holiday_message?: string | null;
+  full_schedule?: Record<string, string>;
+}
+
+export interface ShopStatus {
+  website_open: boolean;
+  zomato_open?: boolean;
+  swiggy_open?: boolean;
+  is_open: boolean;
+  schedule_active?: boolean;
+  status_text?: string;
+  next_open_text?: string | null;
+  display_hours?: string | null;
+  holiday_message?: string | null;
+  business_hours: PublicBusinessHours;
 }

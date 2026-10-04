@@ -6,9 +6,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUserSessionStore } from "@/store/useUserSessionStore";
 import { useCartStore } from "@/store/useCartStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { Order, OrderStatus } from "@/types";
 import { formatINR, cn } from "@/lib/utils";
-import { products } from "@/data/products";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { toast } from "sonner";
 import {
   User,
@@ -44,6 +45,7 @@ import {
 } from "@/lib/royalTags";
 
 export function ProfileClient() {
+  const products = useStorefrontStore((st) => st.products);
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [filter, setFilter] = useState<"all" | "active" | "delivered">("all");
@@ -64,6 +66,7 @@ export function ProfileClient() {
   const { user, orders, endSession, setOrders, updateUser, isLoggedIn } =
     useUserSessionStore();
   const { addItem, setCartDrawerOpen } = useCartStore();
+  const { guard } = useShopGate();
 
   useEffect(() => {
     setMounted(true);
@@ -117,6 +120,7 @@ export function ProfileClient() {
 
   // 1-Click Reorder handler
   const handleReorder = (order: Order) => {
+    if (!guard()) return;
     let addedCount = 0;
     order.items.forEach((item) => {
       const prod = products.find((p) => p.id === item.productId || p.slug === item.productSlug);

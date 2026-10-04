@@ -25,10 +25,10 @@ export const siteConfig: SiteConfig = {
     email: "hello@pannabiryani.in",
   },
   operatingHours: {
-    openTime: "17:00", // 5:00 PM
+    openTime: "17:00", // 5:00 PM (weekdays)
     closeTime: "23:00", // 11:00 PM
-    displayHours: "5:00 PM - 11:00 PM",
-    days: "Monday - Sunday (All 7 Days)",
+    displayHours: "Mon–Fri 5:00 PM – 11:00 PM",
+    days: "Sat–Sun 11:00 AM – 11:00 PM",
     isAcceptingOrders: true,
   },
   pricingRules: {

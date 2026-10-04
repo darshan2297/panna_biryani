@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/useCartStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { siteConfig } from "@/data/siteConfig";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { formatINR, cn } from "@/lib/utils";
 import {
   Store,
@@ -22,6 +24,9 @@ import { trackEvent } from "@/services/analytics/analyticsService";
 import { useUserSessionStore } from "@/store/useUserSessionStore";
 
 export function CheckoutForm() {
+  const storefrontMethods = useStorefrontStore((st) => st.paymentMethods);
+  const onlineMethodEnabled = storefrontMethods.length === 0 || storefrontMethods.find((m) => m.key === "online")?.enabled !== false;
+  const codMethodEnabled = storefrontMethods.length === 0 || storefrontMethods.find((m) => m.key === "cash_on_delivery")?.enabled !== false;
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +57,8 @@ export function CheckoutForm() {
     getTotal,
     clearCart,
   } = useCartStore();
+
+  const { isOpen, guard } = useShopGate();
 
   useEffect(() => {
     setMounted(true);
@@ -126,6 +133,9 @@ export function CheckoutForm() {
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!guard()) {
+      return;
+    }
     if (!validate()) {
       toast.error("Please fill in all required fields correctly.");
       return;
@@ -524,6 +534,7 @@ export function CheckoutForm() {
                 </div>
 
                 <div className="space-y-3">
+                  {onlineMethodEnabled && (
                   <label
                     onClick={() => setPaymentMethod("online")}
                     className={cn(
@@ -575,6 +586,8 @@ export function CheckoutForm() {
                     </div>
                   </label>
 
+                  )}
+                  {codMethodEnabled && (
                   <label
                     onClick={() => setPaymentMethod("cash_on_delivery")}
                     className={cn(
@@ -625,6 +638,7 @@ export function CheckoutForm() {
                       )}
                     </div>
                   </label>
+                  )}
                 </div>
               </div>
             </div>
@@ -692,14 +706,25 @@ export function CheckoutForm() {
                 </div>
 
                 {/* Place Order CTA */}
+                {!isOpen && (
+                  <div className="mb-3 bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-800 flex items-center gap-2">
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <span>Shop is currently closed. Please try again during opening hours.</span>
+                  </div>
+                )}
                 <button
                   id="place-order-submit-btn"
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isOpen}
                   className="w-full flex items-center justify-center gap-2 bg-panna-gold hover:bg-[#d8af37] text-panna-deep font-bold py-4 px-6 rounded-full shadow-lg transition-all active:scale-98 text-sm uppercase tracking-wider disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <span>Processing Order...</span>
+                  ) : !isOpen ? (
+                    <>
+                      <Clock className="w-4 h-4" />
+                      <span>Shop Closed</span>
+                    </>
                   ) : (
                     <>
                       <span>Place Order • {formatINR(total)}</span>

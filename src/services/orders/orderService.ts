@@ -1,6 +1,18 @@
-import { products, combos, extras } from "@/data/products";
+import { products as staticProducts, combos as staticCombos, extras as staticExtras } from "@/data/products";
+
+function currentMenu() {
+  const srv = getServerStorefront();
+  const resolveImg = (url: string) => (url && url.startsWith("/media/") ? (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1.*$/, "") + url : url);
+  return {
+    products: srv.menu && srv.menu.products.length > 0 ? srv.menu.products.map((p) => ({ ...p, image: resolveImg(p.image) })) : staticProducts,
+    combos: srv.menu && srv.menu.combos.length > 0 ? srv.menu.combos.map((c) => ({ ...c, image: resolveImg(c.image) })) : staticCombos,
+    extras: srv.menu && srv.menu.extras.length > 0 ? srv.menu.extras.map((e) => ({ ...e, image: resolveImg(e.image) })) : staticExtras,
+  };
+}
 import { getOfferByCode } from "@/data/offers";
 import { siteConfig } from "@/data/siteConfig";
+import { getServerStorefront } from "@/services/storefront/serverConfig";
+import { forwardOrderToCrm } from "@/services/storefront/crmOrderService";
 import { calculateDeliveryFee } from "@/services/delivery/deliveryService";
 import {
   CartItem,
@@ -73,7 +85,7 @@ const seedDemoOrder: Order = {
       quantity: 1,
       extras: [
         {
-          extra: extras[0], // Raita Bowl
+          extra: staticExtras[0], // Raita Bowl
           quantity: 1,
         },
       ],
@@ -124,6 +136,7 @@ export function calculateOrderTotals(
   for (const itemInput of items) {
     if (itemInput.isCombo) {
       // Find matching combo
+      const { combos, products, extras } = currentMenu();
       const combo = combos.find((c) => c.id === itemInput.productId);
       if (!combo) continue;
 
@@ -156,6 +169,7 @@ export function calculateOrderTotals(
     }
 
     // Standard biryani product
+    const { products, extras } = currentMenu();
     const product = products.find((p) => p.id === itemInput.productId);
     if (!product || !product.available) continue;
 
@@ -210,9 +224,29 @@ export function calculateOrderTotals(
   let appliedCoupon: string | undefined = undefined;
 
   if (couponCode) {
-    const offer = getOfferByCode(couponCode);
-    if (offer && subtotal >= offer.minOrderValue) {
-      appliedCoupon = offer.code;
+    const srv = getServerStorefront();
+    const promo = (srv.promoCodes || []).find(
+      (p) => p.code.toUpperCase() === couponCode.trim().toUpperCase() && p.active
+    );
+    const offer = promo
+      ? {
+          discountType:
+            promo.discount_type === "percentage"
+              ? "percentage"
+              : promo.discount_type === "free_item"
+              ? "free_item"
+              : "fixed",
+          discountValue: promo.discount_value,
+        }
+      : (() => {
+          const o = getOfferByCode(couponCode);
+          return o
+            ? { discountType: o.discountType, discountValue: o.discountValue, code: o.code }
+            : undefined;
+        })();
+    const minOrder = promo ? promo.min_order_value : (getOfferByCode(couponCode)?.minOrderValue ?? 0);
+    if (offer && subtotal >= minOrder) {
+      appliedCoupon = promo ? promo.code : getOfferByCode(couponCode)?.code;
       if (offer.discountType === "fixed") {
         discount = offer.discountValue;
       } else if (offer.discountType === "percentage") {
@@ -288,6 +322,14 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 
   ordersStore.set(orderId, newOrder);
   ordersStore.set(orderNumber, newOrder);
+
+  // Forward to CRM so the order shows up in the CRM orders dashboard
+  const crmOrderNumber = await forwardOrderToCrm(newOrder);
+  if (crmOrderNumber) {
+    newOrder.crmOrderNumber = crmOrderNumber;
+    ordersStore.set(orderId, newOrder);
+    ordersStore.set(orderNumber, newOrder);
+  }
 
   return newOrder;
 }

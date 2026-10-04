@@ -1,10 +1,13 @@
+"use client";
 import Link from "next/link";
 import Image from "next/image";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { Phone, Mail, MapPin, Clock } from "lucide-react";
 import { siteConfig } from "@/data/siteConfig";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 
 export function Footer() {
+  useStorefrontStore((s) => s.config);
   const currentYear = new Date().getFullYear();
 
   return (
@@ -99,7 +102,7 @@ export function Footer() {
                 </li>
                 <li className="flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-[#E8B94A] shrink-0" />
-                  <span>5 PM - 11 PM Daily</span>
+                  <span>Mon–Fri 5–11 PM • Sat–Sun 11 AM–11 PM</span>
                 </li>
               </ul>
             </div>
@@ -198,7 +201,8 @@ export function Footer() {
               </li>
               <li className="flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#E8B94A] shrink-0" />
-                <span>Mon - Sun &nbsp;|&nbsp; 5 PM - 11 PM</span>
+                <span>Mon - Fri &nbsp;|&nbsp; 5 PM - 11 PM</span>
+                <span>Sat - Sun &nbsp;|&nbsp; 11 AM - 11 PM</span>
               </li>
             </ul>
           </div>

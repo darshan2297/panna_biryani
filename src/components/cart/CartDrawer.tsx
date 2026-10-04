@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCartStore } from "@/store/useCartStore";
-import { extras } from "@/data/products";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { formatINR, cn } from "@/lib/utils";
 import { siteConfig } from "@/data/siteConfig";
 import {
@@ -18,10 +19,12 @@ import {
   Gift,
   CheckCircle2,
   Tag,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
 export function CartDrawer() {
+  const extras = useStorefrontStore((st) => st.extras);
   const {
     items,
     orderType,
@@ -45,6 +48,7 @@ export function CartDrawer() {
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
+  const { isOpen, guard } = useShopGate();
 
   const handleClearCart = () => {
     if (!confirmClear) {
@@ -98,6 +102,7 @@ export function CartDrawer() {
   };
 
   const handleAddExtraDirect = (extraItem: (typeof extras)[0]) => {
+    if (!guard()) return;
     const { addExtraItem } = useCartStore.getState();
     addExtraItem(extraItem, 1);
   };
@@ -482,6 +487,15 @@ export function CartDrawer() {
           {/* Sticky Drawer Footer */}
           {items && items.length > 0 && (
             <div className="p-4 bg-white border-t border-panna-border shadow-lg space-y-2">
+              {!isOpen && (
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-xs text-rose-800 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>
+                    Shop is currently closed. You can still review your cart, but checkout is
+                    disabled.
+                  </span>
+                </div>
+              )}
               <Link
                 href="/cart"
                 onClick={() => setCartDrawerOpen(false)}
@@ -490,17 +504,28 @@ export function CartDrawer() {
                 <span>View Full Cart Page</span>
                 <span className="text-zinc-500">({itemCount} {itemCount === 1 ? "item" : "items"})</span>
               </Link>
-              <Link
-                href="/checkout"
-                onClick={() => setCartDrawerOpen(false)}
-                className="w-full flex items-center justify-between bg-panna-gold hover:bg-[#d8af37] text-panna-deep font-bold px-5 py-3 rounded-full shadow-md transition-all active:scale-98 text-sm uppercase tracking-wider"
-              >
-                <span>Proceed to Checkout</span>
-                <span className="flex items-center gap-1 font-black text-base">
-                  {formatINR(total)}
-                  <ArrowRight className="w-4 h-4 ml-1" />
-                </span>
-              </Link>
+              {isOpen ? (
+                <Link
+                  href="/checkout"
+                  onClick={() => setCartDrawerOpen(false)}
+                  className="w-full flex items-center justify-between bg-panna-gold hover:bg-[#d8af37] text-panna-deep font-bold px-5 py-3 rounded-full shadow-md transition-all active:scale-98 text-sm uppercase tracking-wider"
+                >
+                  <span>Proceed to Checkout</span>
+                  <span className="flex items-center gap-1 font-black text-base">
+                    {formatINR(total)}
+                    <ArrowRight className="w-4 h-4 ml-1" />
+                  </span>
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={guard}
+                  className="w-full flex items-center justify-center gap-2 bg-zinc-400 cursor-not-allowed text-white font-bold px-5 py-3 rounded-full text-sm uppercase tracking-wider"
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Shop Closed</span>
+                </button>
+              )}
               <p className="text-center text-[10px] text-zinc-500">
                 100% Hygienic • Prepared Fresh on Order in Surat
               </p>

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCartStore } from "@/store/useCartStore";
-import { extras } from "@/data/products";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
+import { useShopGate } from "@/components/shop/useShopGate";
 import { siteConfig } from "@/data/siteConfig";
 import { formatINR, cn } from "@/lib/utils";
 import {
@@ -17,15 +18,18 @@ import {
   CheckCircle2,
   Tag,
   ArrowLeft,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
 export function CartPageContent() {
+  const extras = useStorefrontStore((st) => st.extras);
   const [mounted, setMounted] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
 
   const [confirmClear, setConfirmClear] = useState(false);
+  const { isOpen, guard } = useShopGate();
 
   const {
     items,
@@ -101,6 +105,7 @@ export function CartPageContent() {
   };
 
   const handleAddExtraDirect = (extraItem: (typeof extras)[0]) => {
+    if (!guard()) return;
     const { addExtraItem } = useCartStore.getState();
     addExtraItem(extraItem, 1);
     toast.success(`Added ${extraItem.name} to order!`);
@@ -454,13 +459,31 @@ export function CartPageContent() {
               </div>
               <p className="text-[10px] text-zinc-400 text-right">Taxes included</p>
 
-              <Link
-                href="/checkout"
-                className="w-full flex items-center justify-center gap-2 bg-panna-gold hover:bg-[#d8af37] text-panna-deep font-bold py-3.5 px-6 rounded-full shadow-lg transition-all active:scale-98 text-sm uppercase tracking-wider mt-4"
-              >
-                <span>Proceed to Checkout</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+              {!isOpen && (
+                <div className="mt-4 bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-800 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>Shop is currently closed. Checkout is disabled.</span>
+                </div>
+              )}
+
+              {isOpen ? (
+                <Link
+                  href="/checkout"
+                  className="w-full flex items-center justify-center gap-2 bg-panna-gold hover:bg-[#d8af37] text-panna-deep font-bold py-3.5 px-6 rounded-full shadow-lg transition-all active:scale-98 text-sm uppercase tracking-wider mt-4"
+                >
+                  <span>Proceed to Checkout</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={guard}
+                  className="w-full flex items-center justify-center gap-2 bg-zinc-400 cursor-not-allowed text-white font-bold py-3.5 px-6 rounded-full text-sm uppercase tracking-wider mt-4"
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Shop Closed</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

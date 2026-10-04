@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { CartItem, Product, ProductSize, ExtraItem, OrderType, Offer, ComboPack } from "@/types";
 import { getOfferByCode } from "@/data/offers";
 import { siteConfig } from "@/data/siteConfig";
+import { getDeliverySettings, findPromoCode } from "@/store/useStorefrontStore";
 
 interface CartState {
   items: CartItem[];
@@ -251,7 +252,27 @@ export const useCartStore = create<CartState>()(
       },
 
       applyCoupon: (code) => {
-        const offer = getOfferByCode(code);
+        const promo = findPromoCode(code);
+        const offer: Offer | undefined = promo
+          ? {
+              id: String(promo.id),
+              code: promo.code,
+              title: promo.title,
+              subtitle: promo.subtitle || "",
+              description: promo.description || "",
+              discountType:
+                promo.discount_type === "percentage"
+                  ? "percentage"
+                  : promo.discount_type === "free_item"
+                  ? "free_item"
+                  : "fixed",
+              discountValue: promo.discount_value,
+              freeItemName: promo.free_item_name || undefined,
+              minOrderValue: promo.min_order_value,
+              badge: promo.badge || undefined,
+              active: promo.active,
+            }
+          : getOfferByCode(code);
         if (!offer) {
           return { success: false, message: "Invalid promo code" };
         }
@@ -289,13 +310,9 @@ export const useCartStore = create<CartState>()(
         const state = get();
         if (state.orderType === "pickup") return 0;
         const subtotal = state.getSubtotal();
-        if (subtotal >= (siteConfig?.pricingRules?.freeDeliveryThreshold ?? 800)) return 0;
-
-        const areaName = (state.selectedArea || "Vesu").toString().trim().toLowerCase();
-        const area = (siteConfig?.deliveryAreas || []).find(
-          (a) => (a.name || "").toString().trim().toLowerCase() === areaName
-        );
-        return area ? area.deliveryFee : (siteConfig?.pricingRules?.defaultDeliveryFee ?? 49);
+        const ds = getDeliverySettings();
+        if (ds.freeDeliveryEnabled && subtotal >= ds.freeDeliveryThreshold) return 0;
+        return ds.deliveryFee;
       },
 
       getDiscount: () => {
