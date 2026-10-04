@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createOrder } from "@/services/orders/orderService";
 import { activePaymentProvider } from "@/services/payments/paymentProvider";
+import { getWebsiteShopOpen } from "@/services/shopStatus";
 
 // Strict Zod schema for checkout submission
 const checkoutSchema = z.object({
@@ -55,6 +56,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Delivery address is required for doorstep delivery." },
         { status: 400 }
+      );
+    }
+
+    // Shop open/closed gate controlled from CRM
+    const shopOpen = await getWebsiteShopOpen();
+    if (!shopOpen) {
+      return NextResponse.json(
+        { success: false, error: "We are currently CLOSED and not accepting orders. Please check back during shop hours." },
+        { status: 403 }
       );
     }
 
