@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Panna Biryani Color Palette - Warm Indian Vintage Modern */
+    --panna-green-deep: #0c281e;
+    --panna-green-dark: #12372a;
+    --panna-green-forest: #1b4d3e;
+    --panna-green-olive: #386641;
+    --panna-green-light: #eaf2ec;
+    --panna-green-subtle: #f0f7f2;
+
+    --panna-gold-antique: #c59b27;
+    --panna-gold-bright: #d4af37;
+    --panna-gold-dark: #997316;
+    --panna-gold-light: #fef8e7;
+    --panna-gold-border: #e8d79f;
+
+    --panna-cream-bg: #faf7f2;
+    --panna-cream-card: #ffffff;
+    --panna-cream-muted: #f4efe6;
+    --panna-border: #e6decb;
+
+    --panna-charcoal: #1c2420;
+    --panna-charcoal-muted: #57655d;
+    --panna-charcoal-light: #83928a;
+
+    --panna-terracotta: #b84a28;
+    --panna-copper: #b85d38;
+
+    --radius-sm: 0.375rem;
+    --radius-md: 0.625rem;
+    --radius-lg: 0.875rem;
+    --radius-xl: 1.25rem;
+    --radius-full: 9999px;
+  }
+}
+
+@theme {
+  --breakpoint-3xl: 1920px;
+  --breakpoint-4k: 2560px;
+
+  --color-panna-deep: #0c281e;
+  --color-panna-dark: #12372a;
+  --color-panna-forest: #1b4d3e;
+  --color-panna-olive: #386641;
+  --color-panna-light: #eaf2ec;
+  --color-panna-subtle: #f0f7f2;
+
+  --color-panna-gold: #c59b27;
+  --color-panna-gold-bright: #d4af37;
+  --color-panna-gold-dark: #997316;
+  --color-panna-gold-light: #fef8e7;
+  --color-panna-gold-border: #e8d79f;
+
+  --color-panna-bg: #faf7f2;
+  --color-panna-card: #ffffff;
+  --color-panna-muted: #f4efe6;
+  --color-panna-border: #e6decb;
+
+  --color-panna-charcoal: #1c2420;
+  --color-panna-charcoal-muted: #57655d;
+  --color-panna-charcoal-light: #83928a;
+
+  --color-panna-terracotta: #b84a28;
+  --color-panna-copper: #b85d38;
+
+  --font-serif: var(--font-outfit), var(--font-jakarta), system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-outfit), var(--font-jakarta), system-ui, -apple-system, sans-serif;
+  --font-script: var(--font-caveat), cursive;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+body {
+  background-color: var(--panna-cream-bg);
+  color: var(--panna-charcoal);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Utilities for Panna Biryani Design Identity */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #dfb746 0%, #c59b27 50%, #9e7717 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-bg {
+  background: linear-gradient(135deg, #d4af37 0%, #c59b27 100%);
+}
+
+.gold-gradient-border {
+  border-image: linear-gradient(to right, #c59b27, #f3db83, #c59b27) 1;
+}
+
+.deep-green-gradient {
+  background: linear-gradient(180deg, #091c15 0%, #0c281e 50%, #12372a 100%);
+}
+
+/* Smooth custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f4efe6;
+}
+::-webkit-scrollbar-thumb {
+  background: #c2baa8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #1b4d3e;
+}
+
+/* Badge pulse animation */
+@keyframes pulse-gold {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(197, 155, 39, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(197, 155, 39, 0);
+  }
+}
+
+.animate-pulse-gold {
+  animation: pulse-gold 2.5s infinite;
+}
+
+/* Hide Next.js development badge overlay in previews */
+nextjs-portal,
+[data-nextjs-toast],
+#__next-build-watcher,
+div:has(> a[href*="nextjs.org"]) {
+  display: none !important;
+}
+
+/* Ensure every button and clickable element displays hand pointer cursor across the entire application */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+select,
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"],
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+}
