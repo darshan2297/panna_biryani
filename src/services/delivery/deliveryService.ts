@@ -14,7 +14,7 @@ export interface DeliveryCalculationResult {
 
 /**
  * Server-safe delivery fee calculation based on order type, subtotal, and area.
- * Uses CRM storefront config when hydrated (delivery fee + free delivery rule),
+ * Uses CRM delivery areas when hydrated (per-area fees, ETAs, min orders),
  * falls back to static siteConfig otherwise.
  */
 export function calculateDeliveryFee(
@@ -40,6 +40,40 @@ export function calculateDeliveryFee(
   const fdThreshold = srv.config
     ? Number(srv.config.free_delivery_threshold)
     : siteConfig.pricingRules.freeDeliveryThreshold;
+
+  // Try to find a matching CRM delivery area by name or pincode
+  const crmAreas = srv.deliveryAreas || [];
+  const matchedArea = crmAreas.find(
+    (a) =>
+      (areaName && a.name.toLowerCase() === areaName.toLowerCase()) ||
+      (pincode && a.pincode === pincode)
+  );
+
+  // If we have a CRM-matched area, use its specific fee/ETA/minOrder
+  if (matchedArea) {
+    if (fdEnabled && subtotal >= fdThreshold) {
+      return {
+        deliveryFee: 0,
+        isFreeDelivery: true,
+        freeDeliveryReason: `Free delivery applied (Order ₹${subtotal} >= ₹${fdThreshold})`,
+        estimatedMinutes: matchedArea.estimated_minutes,
+        minOrderRequired: matchedArea.min_order,
+        areaFound: true,
+        areaName: matchedArea.name,
+      };
+    }
+
+    return {
+      deliveryFee: matchedArea.delivery_fee,
+      isFreeDelivery: false,
+      estimatedMinutes: matchedArea.estimated_minutes,
+      minOrderRequired: matchedArea.min_order,
+      areaFound: true,
+      areaName: matchedArea.name,
+    };
+  }
+
+  // Fallback to flat fee from CRM config or static config
   const flatFee = srv.config
     ? Number(srv.config.delivery_fee)
     : siteConfig.pricingRules.defaultDeliveryFee;
@@ -61,7 +95,7 @@ export function calculateDeliveryFee(
     isFreeDelivery: false,
     estimatedMinutes: 40,
     minOrderRequired: 199,
-    areaFound: true,
+    areaFound: false,
     areaName: areaName || "Surat City",
   };
 }

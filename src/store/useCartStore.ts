@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { CartItem, Product, ProductSize, ExtraItem, OrderType, Offer, ComboPack } from "@/types";
 import { getOfferByCode } from "@/data/offers";
 import { siteConfig } from "@/data/siteConfig";
-import { getDeliverySettings, findPromoCode } from "@/store/useStorefrontStore";
+import { getDeliverySettings, findPromoCode, getStorefront } from "@/store/useStorefrontStore";
 
 interface CartState {
   items: CartItem[];
@@ -252,7 +252,8 @@ export const useCartStore = create<CartState>()(
       },
 
       applyCoupon: (code) => {
-        const promo = findPromoCode(code);
+        const cartSlugs = (get().items || []).map((item) => item.productSlug || item.productId);
+        const promo = findPromoCode(code, cartSlugs);
         const offer: Offer | undefined = promo
           ? {
               id: String(promo.id),
@@ -285,6 +286,16 @@ export const useCartStore = create<CartState>()(
           };
         }
 
+        if (promo && promo.minimum_order_items != null) {
+          const itemCount = get().getItemCount();
+          if (itemCount < promo.minimum_order_items) {
+            return {
+              success: false,
+              message: `A minimum of ${promo.minimum_order_items} item(s) is required for this promo code`,
+            };
+          }
+        }
+
         set({ appliedCoupon: offer });
         return { success: true, message: `Offer '${offer.code}' applied successfully!` };
       },
@@ -312,6 +323,18 @@ export const useCartStore = create<CartState>()(
         const subtotal = state.getSubtotal();
         const ds = getDeliverySettings();
         if (ds.freeDeliveryEnabled && subtotal >= ds.freeDeliveryThreshold) return 0;
+
+        // Location-wise fee from CRM delivery areas (matches by area name or pincode)
+        const areas = getStorefront().deliveryAreas || [];
+        const areaName = (state.selectedArea || "").toLowerCase();
+        const matched = areas.find(
+          (a: any) =>
+            (areaName && String(a.name).toLowerCase() === areaName) ||
+            (state.pincode && a.pincode === state.pincode)
+        );
+        if (matched) return Number((matched as any).delivery_fee ?? ds.deliveryFee);
+
+        // Fallback: flat fee from CRM storefront config
         return ds.deliveryFee;
       },
 

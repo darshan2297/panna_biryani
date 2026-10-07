@@ -15,16 +15,18 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trackEvent } from "@/services/analytics/analyticsService";
+import { submitInquiry } from "@/services/storefront/inquiryService";
 
 export function BulkOrderForm() {
   useStorefrontStore((s) => s.config);
+  const deliveryAreas = useStorefrontStore((s) => s.deliveryAreas);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [guestCount, setGuestCount] = useState("25");
   const [preferredBiryani, setPreferredBiryani] = useState("Assorted Mix (Veg Dum + Paneer Dum)");
   const [orderType, setOrderType] = useState<"delivery" | "pickup">("delivery");
-  const [areaLocation, setAreaLocation] = useState(siteConfig.deliveryAreas[0].name);
+  const [areaLocation, setAreaLocation] = useState(deliveryAreas[0]?.name || "Surat");
   const [notes, setNotes] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,12 +46,28 @@ export function BulkOrderForm() {
       orderType,
     });
 
-    // Simulate backend submission
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      await submitInquiry({
+        inquiry_type: "bulk",
+        name: name.trim(),
+        phone: phone.trim(),
+        subject: `Bulk Order for ${eventDate} (${guestCount} guests)`,
+        message: notes.trim() || undefined,
+        details: {
+          event_date: eventDate,
+          guest_count: guestCount,
+          preferred_biryani: preferredBiryani,
+          order_type: orderType,
+          area: areaLocation,
+        },
+      });
       setIsSubmitted(true);
       toast.success("Bulk order inquiry received! Our catering manager will call you shortly.");
-    }, 800);
+    } catch {
+      toast.error("Could not submit your request right now. Please try again or call us directly.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const useCases = [
@@ -241,7 +259,7 @@ export function BulkOrderForm() {
                       onChange={(e) => setAreaLocation(e.target.value)}
                       className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm px-3.5 py-2.5 text-panna-deep font-semibold focus:outline-none focus:border-panna-gold"
                     >
-                      {siteConfig.deliveryAreas.map((area) => (
+                      {deliveryAreas.map((area) => (
                         <option key={area.name} value={area.name}>
                           {area.name} (Surat)
                         </option>

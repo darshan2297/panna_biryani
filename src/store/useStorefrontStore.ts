@@ -1,8 +1,10 @@
 "use client";
 
 import { create } from "zustand";
-import { Product, ComboPack, ExtraItem } from "@/types";
+import { Product, ComboPack, ExtraItem, ReviewItem, FAQItem, DeliveryAreaConfig } from "@/types";
 import { products as staticProducts, combos as staticCombos, extras as staticExtras } from "@/data/products";
+import { reviews as staticReviews } from "@/data/reviews";
+import { faqs as staticFaqs } from "@/data/faq";
 import { siteConfig } from "@/data/siteConfig";
 import {
   StorefrontConfig,
@@ -12,6 +14,9 @@ import {
   fetchPaymentMethods,
   fetchPromoCodes,
   fetchMenuData,
+  fetchReviews,
+  fetchFAQs,
+  fetchDeliveryAreas,
   resolveImageUrl,
 } from "@/services/storefront/configService";
 
@@ -23,6 +28,9 @@ interface StorefrontState {
   products: Product[];
   combos: ComboPack[];
   extras: ExtraItem[];
+  reviews: ReviewItem[];
+  faqs: FAQItem[];
+  deliveryAreas: DeliveryAreaConfig[];
   load: () => Promise<void>;
 }
 
@@ -34,14 +42,20 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
   products: staticProducts,
   combos: staticCombos,
   extras: staticExtras,
+  reviews: staticReviews,
+  faqs: staticFaqs,
+  deliveryAreas: siteConfig.deliveryAreas,
 
   load: async () => {
     if (get().loaded) return;
-    const [config, paymentMethods, promoCodes, menu] = await Promise.all([
+    const [config, paymentMethods, promoCodes, menu, reviews, faqs, deliveryAreas] = await Promise.all([
       fetchStorefrontConfig(),
       fetchPaymentMethods(),
       fetchPromoCodes(),
       fetchMenuData(),
+      fetchReviews(),
+      fetchFAQs(),
+      fetchDeliveryAreas(),
     ]);
     set({
       loaded: true,
@@ -51,6 +65,9 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
       products: menu && menu.products && menu.products.length > 0 ? menu.products.map((p) => ({ ...p, image: resolveImageUrl(p.image) })) : staticProducts,
       combos: menu && menu.combos && menu.combos.length > 0 ? menu.combos.map((c) => ({ ...c, image: resolveImageUrl(c.image) })) : staticCombos,
       extras: menu && menu.extras && menu.extras.length > 0 ? menu.extras.map((e) => ({ ...e, image: resolveImageUrl(e.image) })) : staticExtras,
+      reviews: reviews && reviews.length > 0 ? reviews : staticReviews,
+      faqs: faqs && faqs.length > 0 ? faqs : staticFaqs,
+      deliveryAreas: deliveryAreas && deliveryAreas.length > 0 ? deliveryAreas : siteConfig.deliveryAreas,
     });
 
     // Reflect CRM config into the legacy siteConfig object so existing
@@ -75,7 +92,9 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
         if (config.email) (siteConfig as any).contact.email = config.email;
         (siteConfig as any).pricingRules.defaultDeliveryFee = Number(config.delivery_fee);
         (siteConfig as any).pricingRules.freeDeliveryThreshold = Number(config.free_delivery_threshold);
-        (siteConfig as any).deliveryAreas = config.delivery_enabled !== false
+        (siteConfig as any).deliveryAreas = deliveryAreas && deliveryAreas.length > 0
+          ? deliveryAreas
+          : config.delivery_enabled !== false
           ? [{ name: config.area || "Surat", pincode: config.pincode || "395007", deliveryFee: Number(config.delivery_fee), estimatedMinutes: 40, minOrder: 0 }]
           : [];
       } catch {
@@ -140,10 +159,24 @@ export function getStorefrontImage(kind: "logo" | "banner" | "bannerMobile" | "g
 }
 
 /** Match a CRM promo code (case-insensitive). Falls back to static offers. */
-export function findPromoCode(code: string): PromoCodeInfo | undefined {
+export function findPromoCode(code: string, cartItemSlugs?: string[]): PromoCodeInfo | undefined {
   const { promoCodes } = getStorefront();
   if (promoCodes.length > 0) {
-    return promoCodes.find((p) => p.code.toUpperCase() === code.trim().toUpperCase() && p.active);
+    return promoCodes.find((p) => {
+      if (p.code.toUpperCase() !== code.trim().toUpperCase() || !p.active) return false;
+
+      const now = Date.now();
+      if (p.valid_from && new Date(p.valid_from).getTime() > now) return false;
+      if (p.valid_until && new Date(p.valid_until).getTime() < now) return false;
+      if (p.max_uses != null && (p.used_count ?? 0) >= p.max_uses) return false;
+
+      if (Array.isArray(p.applicable_items) && p.applicable_items.length > 0 && cartItemSlugs) {
+        const applicable = p.applicable_items.map((s) => String(s).toLowerCase());
+        const matches = cartItemSlugs.some((s) => applicable.includes(String(s).toLowerCase()));
+        if (!matches) return false;
+      }
+      return true;
+    });
   }
   return undefined;
 }

@@ -1,4 +1,4 @@
-import { Product, ComboPack, ExtraItem } from "@/types";
+import { Product, ComboPack, ExtraItem, ReviewItem, FAQItem, DeliveryAreaConfig } from "@/types";
 
 const BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
 const CRM_ORIGIN = BASE.replace(/\/api\/v1.*$/, "");
@@ -47,6 +47,13 @@ export interface PromoCodeInfo {
   min_order_value: number;
   badge: string | null;
   active: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  max_uses: number | null;
+  used_count: number;
+  per_user_limit: number;
+  applicable_items: string[] | null;
+  minimum_order_items: number | null;
 }
 
 export interface MenuData {
@@ -86,4 +93,16 @@ export async function fetchPromoCodes(): Promise<PromoCodeInfo[] | null> {
 
 export async function fetchMenuData(): Promise<MenuData | null> {
   return get<MenuData>("/public/menu-data");
+}
+
+export async function fetchReviews(): Promise<ReviewItem[] | null> {
+  return get<ReviewItem[]>("/public/reviews");
+}
+
+export async function fetchFAQs(): Promise<FAQItem[] | null> {
+  return get<FAQItem[]>("/public/faqs");
+}
+
+export async function fetchDeliveryAreas(): Promise<DeliveryAreaConfig[] | null> {
+  return get<DeliveryAreaConfig[]>("/public/delivery-areas");
 }

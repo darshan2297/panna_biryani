@@ -1,13 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
+import { FAQItem } from "@/types";
 
-export function FAQSection() {
-  const faqs = useStorefrontStore((s) => s.faqs);
+interface Props {
+  initialFaqs: FAQItem[] | null;
+}
+
+export function ClientFAQSection({ initialFaqs }: Props) {
+  const storeFaqs = useStorefrontStore((s) => s.faqs);
+  const [faqs, setFaqs] = useState<FAQItem[]>(initialFaqs || []);
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+
+  useEffect(() => {
+    if (storeFaqs && storeFaqs.length > 0) {
+      setFaqs(storeFaqs);
+    }
+  }, [storeFaqs]);
+
+  if (!faqs || faqs.length === 0) return null;
 
   const toggle = (idx: number) => {
     setOpenIndex(openIndex === idx ? null : idx);

@@ -2,14 +2,45 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { submitInquiry } from "@/services/storefront/inquiryService";
+
+const SUBJECTS: { value: string; label: string }[] = [
+  { value: "general", label: "General Enquiry" },
+  { value: "feedback", label: "Order Feedback" },
+  { value: "bulk", label: "Party / Catering Enquiry" },
+  { value: "franchise", label: "Franchise & Partnership" },
+];
 
 export function ContactForm() {
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [subject, setSubject] = useState("general");
+  const [message, setMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
-    toast.success("Thank you for your message! Our team will contact you shortly.");
+    if (sending) return;
+    setSending(true);
+    try {
+      const subjectLabel = SUBJECTS.find((s) => s.value === subject)?.label || subject;
+      await submitInquiry({
+        inquiry_type: "contact",
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        subject: subjectLabel,
+        message: message.trim(),
+      });
+      setSubmitted(true);
+      toast.success("Thank you for your message! Our team will contact you shortly.");
+    } catch {
+      toast.error("Could not send your message right now. Please try again or WhatsApp us directly.");
+    } finally {
+      setSending(false);
+    }
   };
 
   if (submitted) {
@@ -21,7 +52,10 @@ export function ContactForm() {
         </p>
         <button
           type="button"
-          onClick={() => setSubmitted(false)}
+          onClick={() => {
+            setSubmitted(false);
+            setMessage("");
+          }}
           className="text-xs font-bold text-emerald-900 underline pt-2"
         >
           Send another message
@@ -38,6 +72,8 @@ export function ContactForm() {
           <input
             type="text"
             required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Priyanshu Shah"
             className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm p-3 text-panna-deep focus:outline-none focus:border-panna-gold"
           />
@@ -47,6 +83,8 @@ export function ContactForm() {
           <input
             type="tel"
             required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             placeholder="+91 98765 43210"
             className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm p-3 text-panna-deep focus:outline-none focus:border-panna-gold"
           />
@@ -57,6 +95,8 @@ export function ContactForm() {
         <label className="block font-bold text-panna-deep mb-1.5">Email Address</label>
         <input
           type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           placeholder="name@example.com"
           className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm p-3 text-panna-deep focus:outline-none focus:border-panna-gold"
         />
@@ -64,11 +104,16 @@ export function ContactForm() {
 
       <div>
         <label className="block font-bold text-panna-deep mb-1.5">Subject</label>
-        <select className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm p-3 text-panna-deep font-semibold focus:outline-none focus:border-panna-gold">
-          <option value="general">General Enquiry</option>
-          <option value="feedback">Order Feedback</option>
-          <option value="bulk">Party / Catering Enquiry</option>
-          <option value="franchise">Franchise & Partnership</option>
+        <select
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm p-3 text-panna-deep font-semibold focus:outline-none focus:border-panna-gold"
+        >
+          {SUBJECTS.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -77,6 +122,8 @@ export function ContactForm() {
         <textarea
           rows={4}
           required
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
           placeholder="Write your message here..."
           className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm p-3 text-panna-deep focus:outline-none focus:border-panna-gold"
         />
@@ -84,9 +131,10 @@ export function ContactForm() {
 
       <button
         type="submit"
-        className="w-full py-4 bg-[#0c281e] hover:bg-[#143a2d] text-panna-gold font-bold text-xs uppercase tracking-wider rounded-full shadow-md transition-all active:scale-98"
+        disabled={sending}
+        className="w-full py-4 bg-[#0c281e] hover:bg-[#143a2d] disabled:opacity-60 disabled:cursor-not-allowed text-panna-gold font-bold text-xs uppercase tracking-wider rounded-full shadow-md transition-all active:scale-98"
       >
-        Send Message
+        {sending ? "Sending..." : "Send Message"}
       </button>
     </form>
   );

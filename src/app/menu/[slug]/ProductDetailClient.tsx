@@ -31,7 +31,18 @@ export function ProductDetailClient({
   product, relatedProducts }: Props) {
   const extras = useStorefrontStore((st) => st.extras);
   const router = useRouter();
-  const defaultSize = product.sizes.find((s) => s.id === "500g") || product.sizes[0];
+  // CRM products can be unavailable (no purchasable sizes) — fall back to a
+  // zero-price placeholder so the page renders an Out of Stock state instead
+  // of crashing.
+  const defaultSize: ProductSize = product.sizes.find((s) => s.id === "500g") ||
+    product.sizes[0] || {
+      id: "na",
+      label: "—",
+      weightGrams: 0,
+      price: 0,
+      servesText: "Currently unavailable",
+    };
+  const isUnavailable = product.available === false || product.sizes.length === 0;
   const [selectedSize, setSelectedSize] = useState<ProductSize>(defaultSize);
   const [quantity, setQuantity] = useState(1);
 
@@ -335,21 +346,27 @@ export function ProductDetailClient({
               <button
                 type="button"
                 onClick={handleAddToCart}
-                disabled={isAdding || !isOpen}
+                disabled={isAdding || !isOpen || isUnavailable}
                 className="w-full flex items-center justify-center gap-2 bg-[#0c281e] hover:bg-[#143a2d] disabled:bg-zinc-400 disabled:cursor-not-allowed text-panna-gold font-bold py-3.5 px-6 rounded-xl border border-panna-gold/50 shadow-md text-sm uppercase tracking-wider transition-all active:scale-98 cursor-pointer"
               >
-                {isOpen ? <ShoppingBag className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-                <span>{isOpen ? "Add to Cart" : "Shop Closed"}</span>
+                {isUnavailable ? (
+                  <ShoppingBag className="w-4 h-4" />
+                ) : isOpen ? (
+                  <ShoppingBag className="w-4 h-4" />
+                ) : (
+                  <Clock className="w-4 h-4" />
+                )}
+                <span>{isUnavailable ? "Out of Stock" : isOpen ? "Add to Cart" : "Shop Closed"}</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleBuyNow}
-                disabled={!isOpen}
+                disabled={!isOpen || isUnavailable}
                 className="w-full flex items-center justify-center gap-2 bg-panna-gold hover:bg-[#d8af37] disabled:bg-zinc-400 disabled:cursor-not-allowed text-panna-deep font-bold py-3.5 px-6 rounded-xl shadow-md text-sm uppercase tracking-wider transition-all active:scale-98 cursor-pointer"
               >
-                <span>{isOpen ? "Buy Now" : "Closed"}</span>
-                {isOpen ? <ArrowRight className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                <span>{isUnavailable ? "Out of Stock" : isOpen ? "Buy Now" : "Closed"}</span>
+                {isOpen && !isUnavailable ? <ArrowRight className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
               </button>
             </div>
 
@@ -483,7 +500,9 @@ export function ProductDetailClient({
                     <div className="pt-2 flex items-center justify-between">
                       <span className="text-xs text-zinc-500">
                         Starts from{" "}
-                        <strong className="text-panna-deep">{formatINR(rel.sizes[0].price)}</strong>
+                        <strong className="text-panna-deep">
+                          {rel.sizes.length > 0 ? formatINR(rel.sizes[0].price) : "—"}
+                        </strong>
                       </span>
                       <Link
                         href={`/menu/${rel.slug}`}

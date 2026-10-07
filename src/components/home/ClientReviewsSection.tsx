@@ -1,10 +1,26 @@
 "use client";
 
 import { Star, CheckCircle, MapPin, Quote } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
+import { ReviewItem } from "@/types";
 
-export function ReviewsSection() {
-  const reviews = useStorefrontStore((s) => s.reviews);
+interface Props {
+  initialReviews: ReviewItem[] | null;
+}
+
+export function ClientReviewsSection({ initialReviews }: Props) {
+  const storeReviews = useStorefrontStore((s) => s.reviews);
+  const [reviews, setReviews] = useState<ReviewItem[]>(initialReviews || []);
+
+  useEffect(() => {
+    // Once the store loads from CRM, use those reviews (they're fresher)
+    if (storeReviews && storeReviews.length > 0) {
+      setReviews(storeReviews);
+    }
+  }, [storeReviews]);
+
+  if (!reviews || reviews.length === 0) return null;
 
   return (
     <section className="py-16 bg-[#f4efe6] border-y border-panna-border">
@@ -29,7 +45,6 @@ export function ReviewsSection() {
               className="bg-white p-5 rounded-2xl border border-panna-border shadow-xs flex flex-col justify-between hover:shadow-lg transition-all"
             >
               <div className="space-y-3">
-                {/* 5 Stars */}
                 <div className="flex items-center gap-1">
                   {[...Array(5)].map((_, i) => (
                     <Star key={i} className="w-4 h-4 text-amber-500 fill-amber-500" />

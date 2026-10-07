@@ -32,13 +32,14 @@ export function CheckoutForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form Fields
+  const deliveryAreas = useStorefrontStore((s) => s.deliveryAreas);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
-  const [selectedArea, setSelectedArea] = useState(siteConfig.deliveryAreas[0].name);
+  const [selectedArea, setSelectedArea] = useState(deliveryAreas[0]?.name || "Surat");
   const [landmark, setLandmark] = useState("");
-  const [pincode, setPincode] = useState(siteConfig.deliveryAreas[0].pincode);
+  const [pincode, setPincode] = useState(deliveryAreas[0]?.pincode || "395007");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"online" | "cash_on_delivery">(
     "online"
@@ -63,6 +64,8 @@ export function CheckoutForm() {
   useEffect(() => {
     setMounted(true);
     trackEvent("begin_checkout");
+    // Sync the default area into the cart store so the fee matches the selector
+    useCartStore.getState().setSelectedArea(selectedArea, pincode);
     const existingUser = useUserSessionStore.getState().user;
     if (existingUser) {
       if (existingUser.name) setFullName((prev) => prev || existingUser.name);
@@ -102,10 +105,12 @@ export function CheckoutForm() {
 
   const handleAreaChange = (areaName: string) => {
     setSelectedArea(areaName);
-    const found = siteConfig.deliveryAreas.find((a) => a.name === areaName);
+    const found = deliveryAreas.find((a) => a.name === areaName);
     if (found) {
       setPincode(found.pincode);
     }
+    // Keep the cart store in sync so the delivery fee updates location-wise
+    useCartStore.getState().setSelectedArea(areaName, found?.pincode);
   };
 
   const validate = () => {
@@ -438,9 +443,9 @@ export function CheckoutForm() {
                           onChange={(e) => handleAreaChange(e.target.value)}
                           className="w-full bg-[#faf7f2] border border-panna-border rounded-xl text-sm px-3.5 py-2.5 text-panna-deep font-semibold focus:outline-none focus:border-panna-gold"
                         >
-                          {siteConfig.deliveryAreas.map((area) => (
+                          {deliveryAreas.map((area) => (
                             <option key={area.name} value={area.name}>
-                              {area.name} (Fee: ₹{area.deliveryFee})
+                              {area.name} (Fee: ₹{area.delivery_fee})
                             </option>
                           ))}
                         </select>

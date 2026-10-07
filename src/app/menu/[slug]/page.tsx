@@ -1,6 +1,9 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { products, getProductBySlug } from "@/data/products";
+import { products as staticProducts, getProductBySlug } from "@/data/products";
+import { hydrateServerStorefront, getServerStorefront } from "@/services/storefront/serverConfig";
+import { resolveImageUrl } from "@/services/storefront/configService";
+import { Product } from "@/types";
 import { ProductDetailClient } from "./ProductDetailClient";
 import { ProductJsonLd } from "@/components/seo/JsonLd";
 
@@ -8,15 +11,28 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
-export async function generateStaticParams() {
-  return products.map((product) => ({
-    slug: product.slug,
-  }));
+// Always render with the freshest CRM menu data (prices, availability, images)
+export const dynamic = "force-dynamic";
+
+/** Resolve a product by slug: live CRM menu first, static catalog as fallback. */
+async function resolveProduct(slug: string): Promise<{ product: Product | undefined; all: Product[] }> {
+  try {
+    await hydrateServerStorefront();
+    const menu = getServerStorefront().menu;
+    if (menu && menu.products && menu.products.length > 0) {
+      const all = menu.products.map((p) => ({ ...p, image: resolveImageUrl(p.image) }));
+      const product = all.find((p) => p.slug === slug);
+      if (product) return { product, all };
+    }
+  } catch {
+    /* fall through to static catalog */
+  }
+  return { product: getProductBySlug(slug), all: staticProducts };
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const { product } = await resolveProduct(slug);
 
   if (!product) {
     return {
@@ -24,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const startingPrice = product.sizes[0].price;
+  const startingPrice = product.sizes.length > 0 ? product.sizes[0].price : 0;
 
   return {
     title: `${product.name} in Surat | Order from ₹${startingPrice}`,
@@ -53,13 +69,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductDetailPage({ params }: Props) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const { product, all } = await resolveProduct(slug);
 
   if (!product) {
     notFound();
   }
 
-  const relatedProducts = products.filter((p) => p.id !== product.id).slice(0, 3);
+  const relatedProducts = all.filter((p) => p.id !== product.id).slice(0, 3);
 
   return (
     <>

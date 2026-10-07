@@ -18,6 +18,14 @@ const nextConfig: NextConfig = {
   ],
   images: {
     qualities: [75, 90],
+    // CRM-hosted media uploads (resolveImageUrl points /media/* at the CRM origin)
+    remotePatterns: [
+      { protocol: "http", hostname: "localhost", port: "8000" },
+      { protocol: "http", hostname: "127.0.0.1", port: "8000" },
+      { protocol: "https", hostname: "api.pannabiryani.in" },
+      { protocol: "https", hostname: "pannabiryani.in" },
+      { protocol: "https", hostname: "www.pannabiryani.in" },
+    ],
   },
 };
 

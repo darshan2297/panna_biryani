@@ -32,7 +32,7 @@ export interface Product {
   categoryLabel: string;
   vegetarian: boolean;
   available: boolean;
-  badge?: 'Best Seller' | 'New' | 'Premium' | 'Chef Special';
+  badge?: 'Best Seller' | 'New' | 'Premium' | 'Chef Special' | 'Out of Stock';
   sizes: ProductSize[];
   ingredients: string[];
   allergens: string[];
@@ -171,28 +171,41 @@ export interface BulkOrderRequest {
 }
 
 export interface ReviewItem {
-  id: string;
-  name: string;
-  location: string;
+  id: number;
+  customer_name: string;
+  location: string | null;
   rating: number;
-  review: string;
-  verifiedOrder: boolean;
-  dishLoved: string;
-  date: string;
+  review_text: string;
+  verified_order: boolean;
+  dish_loved: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface FAQItem {
+  id: number;
   question: string;
   answer: string;
   category: 'ordering' | 'food' | 'delivery' | 'bulk';
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DeliveryAreaConfig {
+  id: number;
   name: string;
   pincode: string;
-  deliveryFee: number;
-  estimatedMinutes: number;
-  minOrder: number;
+  delivery_fee: number;
+  estimated_minutes: number;
+  min_order: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SiteConfig {

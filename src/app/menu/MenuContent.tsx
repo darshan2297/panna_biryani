@@ -53,7 +53,7 @@ export function MenuContent() {
         p.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [selectedCategory, searchQuery]);
+  }, [products, selectedCategory, searchQuery]);
 
   const showCombos =
     (selectedCategory === "all" || selectedCategory === "combos") &&
@@ -216,7 +216,7 @@ export function MenuContent() {
 function MenuBiryaniCard({ product }: { product: Product }) {
   const [mounted, setMounted] = useState(false);
   const defaultSize = product.sizes.find((s) => s.id === "250g") || product.sizes[0];
-  const [selectedSize, setSelectedSize] = useState<ProductSize>(defaultSize);
+  const [selectedSize, setSelectedSize] = useState<ProductSize | undefined>(defaultSize);
   const { items, addItem, updateQuantity, setCartDrawerOpen } = useCartStore();
   const { isOpen, guard } = useShopGate();
 
@@ -224,8 +224,12 @@ function MenuBiryaniCard({ product }: { product: Product }) {
     setMounted(true);
   }, []);
 
+  // Products coming from the CRM can have no purchasable sizes (e.g. marked
+  // unavailable). Treat them as out of stock instead of crashing the page.
+  const isUnavailable = product.available === false || !selectedSize;
+
   // Find if currently selected size is in cart
-  const matchingItem = mounted
+  const matchingItem = mounted && selectedSize
     ? items.find(
         (item) =>
           item.productId === product.id &&
@@ -242,7 +246,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!guard()) return;
+    if (!guard() || !selectedSize) return;
     addItem(product, selectedSize, [], 1);
     toast.success(`Added 1 × ${product.name} (${selectedSize.label}) to cart!`, {
       action: {
@@ -257,7 +261,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
   const handleIncrement = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!guard()) return;
+    if (!guard() || !selectedSize) return;
     if (matchingItem) {
       updateQuantity(matchingItem.id, matchingItem.quantity + 1);
     } else {
@@ -282,7 +286,10 @@ function MenuBiryaniCard({ product }: { product: Product }) {
               src={product.image}
               alt={product.name}
               fill
-              className="object-cover transition-transform duration-500 group-hover/img:scale-105"
+              className={cn(
+                "object-cover transition-transform duration-500 group-hover/img:scale-105",
+                isUnavailable && "opacity-60 grayscale"
+              )}
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
             />
           </Link>
@@ -293,11 +300,20 @@ function MenuBiryaniCard({ product }: { product: Product }) {
                 "absolute z-10 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide text-white shadow-md pointer-events-none select-none",
                 product.badge === "Best Seller" && "top-3 left-3 bg-[#007A55]",
                 product.badge === "New" && "top-3 left-3 bg-[#B3261E]",
-                product.badge === "Premium" && "top-3 right-3 bg-[#C59B27]"
+                product.badge === "Premium" && "top-3 right-3 bg-[#C59B27]",
+                product.badge === "Out of Stock" && "top-3 left-3 bg-zinc-500"
               )}
             >
               {product.badge}
             </span>
+          )}
+
+          {isUnavailable && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10 pointer-events-none">
+              <span className="px-4 py-1.5 bg-zinc-800/90 text-white text-sm font-bold rounded-full tracking-wide shadow-lg">
+                Out of Stock
+              </span>
+            </div>
           )}
 
           <Link
@@ -335,7 +351,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
           {/* Clean, Non-Messy 2x2 Size and Price Grid */}
           <div className="grid grid-cols-2 gap-1.5 sm:gap-2 pt-1">
             {product.sizes.map((size) => {
-              const isSelected = selectedSize.id === size.id;
+              const isSelected = selectedSize?.id === size.id;
               const sizeItem = mounted
                 ? items.find(
                     (item) => item.productId === product.id && item.size?.id === size.id
@@ -376,7 +392,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
           </div>
 
           <p className="text-[11px] font-medium text-[#556963] h-[18px] flex items-center">
-            {selectedSize.servesText}
+            {selectedSize ? selectedSize.servesText : "Currently unavailable"}
           </p>
         </div>
       </div>
@@ -393,6 +409,14 @@ function MenuBiryaniCard({ product }: { product: Product }) {
             <Clock className="w-4 h-4" />
             <span>Shop Closed</span>
           </button>
+        ) : isUnavailable ? (
+          <button
+            type="button"
+            disabled
+            className="w-full h-[46px] sm:h-[48px] rounded-xl font-bold text-[12.5px] sm:text-[13.5px] tracking-wide text-white bg-zinc-400 cursor-not-allowed flex items-center justify-center gap-2 select-none"
+          >
+            <span>Out of Stock</span>
+          </button>
         ) : count === 0 ? (
           <button
             type="button"
@@ -408,7 +432,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
               type="button"
               onClick={handleDecrement}
               className="w-10 sm:w-12 h-9 rounded-lg flex items-center justify-center hover:bg-black/20 active:scale-90 transition-all cursor-pointer"
-              aria-label={`Decrease quantity of ${selectedSize.label}`}
+              aria-label={`Decrease quantity of ${selectedSize?.label}`}
             >
               <Minus className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -421,7 +445,7 @@ function MenuBiryaniCard({ product }: { product: Product }) {
               type="button"
               onClick={handleIncrement}
               className="w-10 sm:w-12 h-9 rounded-lg flex items-center justify-center hover:bg-black/20 active:scale-90 transition-all cursor-pointer"
-              aria-label={`Increase quantity of ${selectedSize.label}`}
+              aria-label={`Increase quantity of ${selectedSize?.label}`}
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
             </button>

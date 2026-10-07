@@ -2,15 +2,37 @@
 
 import { Offer } from "@/types";
 import { useCartStore } from "@/store/useCartStore";
+import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { formatINR } from "@/lib/utils";
 import { Gift, Check, Copy, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 
-export function OffersClient({ offers }: { offers: Offer[] }) {
+export function OffersClient({ offers: staticOffers }: { offers: Offer[] }) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const { applyCoupon, setCartDrawerOpen } = useCartStore();
+  const promoCodes = useStorefrontStore((s) => s.promoCodes);
+
+  // CRM promo codes take priority; static offers only as fallback
+  const offers: Offer[] =
+    promoCodes.length > 0
+      ? promoCodes
+          .filter((p) => p.active)
+          .map((p) => ({
+            id: String(p.id),
+            code: p.code,
+            title: p.title,
+            subtitle: p.subtitle || "",
+            description: p.description || "",
+            badge: p.badge || undefined,
+            minOrderValue: p.min_order_value || 0,
+            discountType: (p.discount_type === "free_delivery" ? "fixed" : p.discount_type) as Offer["discountType"],
+            discountValue: p.discount_value,
+            freeItemName: p.free_item_name || undefined,
+            active: p.active,
+          }))
+      : staticOffers;
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
