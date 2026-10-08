@@ -15,27 +15,27 @@ interface ShopStatusContextValue {
 }
 
 const DEFAULT_BUSINESS_HOURS: PublicBusinessHours = {
-  is_open: true,
+  is_open: false,
   auto_schedule_enabled: false,
-  display_hours: "5:00 PM - 11:00 PM",
-  status_text: "Accepting Orders",
+  display_hours: "",
+  status_text: "Checking store status…",
   next_open_text: null,
   holiday_message: null,
   full_schedule: {},
 };
 
 const DEFAULT_STATUS: ShopStatus = {
-  website_open: true,
-  is_open: true,
+  website_open: false,
+  is_open: false,
   business_hours: DEFAULT_BUSINESS_HOURS,
 };
 
 const ShopStatusContext = createContext<ShopStatusContextValue>({
   status: DEFAULT_STATUS,
   businessHours: DEFAULT_BUSINESS_HOURS,
-  isOpen: true,
+  isOpen: false,
   hydrated: false,
-  statusText: "Accepting Orders",
+  statusText: "Checking store status…",
   nextOpenText: null,
   closedMessage: "",
   refresh: async () => {},
@@ -51,7 +51,12 @@ export function ShopStatusProvider({ children }: { children: React.ReactNode }) 
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/shop-status", { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Fail closed — keep default closed state until the API answers.
+        setStatus(DEFAULT_STATUS);
+        setHydrated(true);
+        return;
+      }
       const data = (await res.json()) as ShopStatus;
       if (mountedRef.current) {
         setStatus({
@@ -62,7 +67,7 @@ export function ShopStatusProvider({ children }: { children: React.ReactNode }) 
         setHydrated(true);
       }
     } catch {
-      // Fail open — keep the last known (or default open) state.
+      // Fail closed on first attempt; keep last known API-provided state on later polls.
       if (mountedRef.current) setHydrated(true);
     }
   }, []);

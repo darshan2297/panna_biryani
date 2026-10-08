@@ -1,6 +1,5 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { products as staticProducts, getProductBySlug } from "@/data/products";
 import { hydrateServerStorefront, getServerStorefront } from "@/services/storefront/serverConfig";
 import { resolveImageUrl } from "@/services/storefront/configService";
 import { Product } from "@/types";
@@ -14,20 +13,20 @@ interface Props {
 // Always render with the freshest CRM menu data (prices, availability, images)
 export const dynamic = "force-dynamic";
 
-/** Resolve a product by slug: live CRM menu first, static catalog as fallback. */
+/** Resolve a product by slug from the live CRM menu only — no static catalog fallback. */
 async function resolveProduct(slug: string): Promise<{ product: Product | undefined; all: Product[] }> {
   try {
     await hydrateServerStorefront();
     const menu = getServerStorefront().menu;
-    if (menu && menu.products && menu.products.length > 0) {
+    if (menu && menu.products) {
       const all = menu.products.map((p) => ({ ...p, image: resolveImageUrl(p.image) }));
       const product = all.find((p) => p.slug === slug);
-      if (product) return { product, all };
+      return { product, all };
     }
   } catch {
-    /* fall through to static catalog */
+    /* API unavailable — no product to show */
   }
-  return { product: getProductBySlug(slug), all: staticProducts };
+  return { product: undefined, all: [] };
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

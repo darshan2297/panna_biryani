@@ -10,7 +10,7 @@ export async function HomeSections() {
   try {
     [reviews, faqs] = await Promise.all([fetchReviews(), fetchFAQs()]);
   } catch {
-    // Fall through to null - components will use static fallback
+    // No static fallback — sections render from the CRM-backed store only
   }
 
   return (

@@ -14,8 +14,7 @@ export interface DeliveryCalculationResult {
 
 /**
  * Server-safe delivery fee calculation based on order type, subtotal, and area.
- * Uses CRM delivery areas when hydrated (per-area fees, ETAs, min orders),
- * falls back to static siteConfig otherwise.
+ * Uses only CRM delivery areas/config; no static fallback prices.
  */
 export function calculateDeliveryFee(
   orderType: OrderType,
@@ -36,10 +35,10 @@ export function calculateDeliveryFee(
   }
 
   const srv = getServerStorefront();
-  const fdEnabled = srv.config ? srv.config.free_delivery_enabled : true;
+  const fdEnabled = srv.config ? srv.config.free_delivery_enabled : false;
   const fdThreshold = srv.config
     ? Number(srv.config.free_delivery_threshold)
-    : siteConfig.pricingRules.freeDeliveryThreshold;
+    : Number.POSITIVE_INFINITY;
 
   // Try to find a matching CRM delivery area by name or pincode
   const crmAreas = srv.deliveryAreas || [];
@@ -74,9 +73,7 @@ export function calculateDeliveryFee(
   }
 
   // Fallback to flat fee from CRM config or static config
-  const flatFee = srv.config
-    ? Number(srv.config.delivery_fee)
-    : siteConfig.pricingRules.defaultDeliveryFee;
+  const flatFee = srv.config ? Number(srv.config.delivery_fee) : 0;
 
   if (fdEnabled && subtotal >= fdThreshold) {
     return {
@@ -120,16 +117,16 @@ export function getKitchenOperatingStatus(): {
   const openTimeVal = openH * 60 + openM;
   const closeTimeVal = closeH * 60 + closeM;
 
-  // For testing convenience and daytime browsing, if siteConfig isAcceptingOrders is true,
-  // we indicate open or accepting pre-orders
   const isWithinHours =
     siteConfig.operatingHours.isAcceptingOrders &&
     currentTimeVal >= openTimeVal &&
     currentTimeVal <= closeTimeVal;
 
   return {
-    isOpen: true, // We allow orders/pre-orders 24/7 with delivery starting 5 PM
-    statusText: isWithinHours ? "Open Now • Fresh Dum Cooking" : "Accepting Orders • Delivery from 5:00 PM",
+    isOpen: isWithinHours,
+    statusText: isWithinHours
+      ? "Open Now • Fresh Dum Cooking"
+      : "Accepting Orders • Delivery from 5:00 PM",
     displayHours: siteConfig.operatingHours.displayHours,
     nextOpenTime: "5:00 PM Today",
   };

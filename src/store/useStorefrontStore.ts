@@ -2,9 +2,6 @@
 
 import { create } from "zustand";
 import { Product, ComboPack, ExtraItem, ReviewItem, FAQItem, DeliveryAreaConfig } from "@/types";
-import { products as staticProducts, combos as staticCombos, extras as staticExtras } from "@/data/products";
-import { reviews as staticReviews } from "@/data/reviews";
-import { faqs as staticFaqs } from "@/data/faq";
 import { siteConfig } from "@/data/siteConfig";
 import {
   StorefrontConfig,
@@ -39,12 +36,12 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
   config: null,
   paymentMethods: [],
   promoCodes: [],
-  products: staticProducts,
-  combos: staticCombos,
-  extras: staticExtras,
-  reviews: staticReviews,
-  faqs: staticFaqs,
-  deliveryAreas: siteConfig.deliveryAreas,
+  products: [],
+  combos: [],
+  extras: [],
+  reviews: [],
+  faqs: [],
+  deliveryAreas: [],
 
   load: async () => {
     if (get().loaded) return;
@@ -62,12 +59,12 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
       config: config,
       paymentMethods: paymentMethods && paymentMethods.length > 0 ? paymentMethods : [],
       promoCodes: promoCodes && promoCodes.length > 0 ? promoCodes : [],
-      products: menu && menu.products && menu.products.length > 0 ? menu.products.map((p) => ({ ...p, image: resolveImageUrl(p.image) })) : staticProducts,
-      combos: menu && menu.combos && menu.combos.length > 0 ? menu.combos.map((c) => ({ ...c, image: resolveImageUrl(c.image) })) : staticCombos,
-      extras: menu && menu.extras && menu.extras.length > 0 ? menu.extras.map((e) => ({ ...e, image: resolveImageUrl(e.image) })) : staticExtras,
-      reviews: reviews && reviews.length > 0 ? reviews : staticReviews,
-      faqs: faqs && faqs.length > 0 ? faqs : staticFaqs,
-      deliveryAreas: deliveryAreas && deliveryAreas.length > 0 ? deliveryAreas : siteConfig.deliveryAreas,
+      products: menu && menu.products ? menu.products.map((p) => ({ ...p, image: resolveImageUrl(p.image) })) : [],
+      combos: menu && menu.combos ? menu.combos.map((c) => ({ ...c, image: resolveImageUrl(c.image) })) : [],
+      extras: menu && menu.extras ? menu.extras.map((e) => ({ ...e, image: resolveImageUrl(e.image) })) : [],
+      reviews: reviews ?? [],
+      faqs: faqs ?? [],
+      deliveryAreas: deliveryAreas ?? [],
     });
 
     // Reflect CRM config into the legacy siteConfig object so existing
@@ -104,7 +101,7 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
   },
 }));
 
-// Sync helpers with static fallbacks (safe to call outside React render)
+// Sync helpers — values come from the CRM API (loaded storefront store) only
 export function getStorefront() {
   return useStorefrontStore.getState();
 }
@@ -112,11 +109,11 @@ export function getStorefront() {
 export function getDeliverySettings() {
   const { config } = getStorefront();
   return {
-    deliveryEnabled: config ? config.delivery_enabled : true,
-    pickupEnabled: config ? config.pickup_enabled : true,
-    deliveryFee: config ? Number(config.delivery_fee) : siteConfig.pricingRules.defaultDeliveryFee,
-    freeDeliveryEnabled: config ? config.free_delivery_enabled : true,
-    freeDeliveryThreshold: config ? Number(config.free_delivery_threshold) : siteConfig.pricingRules.freeDeliveryThreshold,
+    deliveryEnabled: config ? config.delivery_enabled : false,
+    pickupEnabled: config ? config.pickup_enabled : false,
+    deliveryFee: config ? Number(config.delivery_fee) : 0,
+    freeDeliveryEnabled: config ? config.free_delivery_enabled : false,
+    freeDeliveryThreshold: config ? Number(config.free_delivery_threshold) : 0,
   };
 }
 
@@ -158,7 +155,7 @@ export function getStorefrontImage(kind: "logo" | "banner" | "bannerMobile" | "g
   return resolveImageUrl(map[kind]) || fallback[kind];
 }
 
-/** Match a CRM promo code (case-insensitive). Falls back to static offers. */
+/** Match a CRM promo code (case-insensitive). Only CRM promos are used. */
 export function findPromoCode(code: string, cartItemSlugs?: string[]): PromoCodeInfo | undefined {
   const { promoCodes } = getStorefront();
   if (promoCodes.length > 0) {

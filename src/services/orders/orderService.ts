@@ -1,15 +1,12 @@
-import { products as staticProducts, combos as staticCombos, extras as staticExtras } from "@/data/products";
-
 function currentMenu() {
   const srv = getServerStorefront();
   const resolveImg = (url: string) => (url && url.startsWith("/media/") ? (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1.*$/, "") + url : url);
   return {
-    products: srv.menu && srv.menu.products.length > 0 ? srv.menu.products.map((p) => ({ ...p, image: resolveImg(p.image) })) : staticProducts,
-    combos: srv.menu && srv.menu.combos.length > 0 ? srv.menu.combos.map((c) => ({ ...c, image: resolveImg(c.image) })) : staticCombos,
-    extras: srv.menu && srv.menu.extras.length > 0 ? srv.menu.extras.map((e) => ({ ...e, image: resolveImg(e.image) })) : staticExtras,
+    products: srv.menu && srv.menu.products ? srv.menu.products.map((p) => ({ ...p, image: resolveImg(p.image) })) : [],
+    combos: srv.menu && srv.menu.combos ? srv.menu.combos.map((c) => ({ ...c, image: resolveImg(c.image) })) : [],
+    extras: srv.menu && srv.menu.extras ? srv.menu.extras.map((e) => ({ ...e, image: resolveImg(e.image) })) : [],
   };
 }
-import { getOfferByCode } from "@/data/offers";
 import { siteConfig } from "@/data/siteConfig";
 import { getServerStorefront } from "@/services/storefront/serverConfig";
 import { forwardOrderToCrm } from "@/services/storefront/crmOrderService";
@@ -60,63 +57,6 @@ if (!globalOrdersStore._pannaOrdersStore) {
   globalOrdersStore._pannaOrdersStore = new Map<string, Order>();
 }
 const ordersStore = globalOrdersStore._pannaOrdersStore;
-
-// Seed a demo initial order so customers can test order tracking right away
-const seedDemoOrder: Order = {
-  id: "order_demo_12345",
-  orderNumber: "PB-2026-10492",
-  customerName: "Darshan Vora",
-  phone: "+91 98765 43210",
-  email: "darshan@example.com",
-  items: [
-    {
-      id: "panna-royal-dum-biryani-500g",
-      productId: "panna-royal-dum-biryani",
-      productName: "Panna Royal Dum Biryani",
-      productSlug: "panna-royal-dum-biryani",
-      productImage: "/images/food/panna-royal-dum-biryani.jpg",
-      size: {
-        id: "500g",
-        label: "500g",
-        weightGrams: 500,
-        price: 319,
-        servesText: "Serves 1-2 people",
-      },
-      quantity: 1,
-      extras: [
-        {
-          extra: staticExtras[0], // Raita Bowl
-          quantity: 1,
-        },
-      ],
-      unitBasePrice: 319,
-      totalPrice: 368,
-    },
-  ],
-  subtotal: 368,
-  discount: 0,
-  deliveryFee: 30,
-  tax: 0,
-  total: 398,
-  orderType: "delivery",
-  deliveryAddress: {
-    fullName: "Darshan Vora",
-    phone: "+91 98765 43210",
-    streetAddress: "Flat 402, Royal Palms, VIP Circle",
-    area: "Vesu",
-    landmark: "Near Reliance Fresh",
-    pincode: "395007",
-    city: "Surat",
-  },
-  paymentMethod: "online",
-  paymentStatus: "PAID",
-  orderStatus: "PREPARING",
-  estimatedDeliveryMinutes: 35,
-  createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 mins ago
-  updatedAt: new Date().toISOString(),
-};
-ordersStore.set(seedDemoOrder.id, seedDemoOrder);
-ordersStore.set(seedDemoOrder.orderNumber, seedDemoOrder);
 
 /**
  * STRICT SERVER-SIDE PRICING VALIDATION
@@ -238,15 +178,10 @@ export function calculateOrderTotals(
               : "fixed",
           discountValue: promo.discount_value,
         }
-      : (() => {
-          const o = getOfferByCode(couponCode);
-          return o
-            ? { discountType: o.discountType, discountValue: o.discountValue, code: o.code }
-            : undefined;
-        })();
-    const minOrder = promo ? promo.min_order_value : (getOfferByCode(couponCode)?.minOrderValue ?? 0);
+      : undefined;
+    const minOrder = promo ? promo.min_order_value : 0;
     if (offer && subtotal >= minOrder) {
-      appliedCoupon = promo ? promo.code : getOfferByCode(couponCode)?.code;
+      appliedCoupon = promo?.code;
       if (offer.discountType === "fixed") {
         discount = offer.discountValue;
       } else if (offer.discountType === "percentage") {
@@ -340,12 +275,6 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 export async function getOrder(idOrNumber: string): Promise<Order | null> {
   const order = ordersStore.get(idOrNumber);
   if (order) return order;
-
-  // Fallback check demo order
-  if (idOrNumber === seedDemoOrder.id || idOrNumber === seedDemoOrder.orderNumber) {
-    return seedDemoOrder;
-  }
-
   return null;
 }
 
@@ -370,12 +299,6 @@ export async function getOrdersByPhone(phone: string): Promise<Order[]> {
   if (!cleanPhone) return [];
 
   const matched = new Map<string, Order>();
-
-  // Check demo seed order
-  const demoClean = seedDemoOrder.phone.replace(/\D/g, "").slice(-10);
-  if (demoClean === cleanPhone) {
-    matched.set(seedDemoOrder.id, seedDemoOrder);
-  }
 
   // Iterate stored orders (deduplicating by order.id)
   for (const order of ordersStore.values()) {

@@ -1,5 +1,4 @@
 import { Metadata } from "next";
-import { offers } from "@/data/offers";
 import { OffersClient } from "./OffersClient";
 
 export const metadata: Metadata = {
@@ -15,5 +14,5 @@ export const metadata: Metadata = {
 };
 
 export default function OffersPage() {
-  return <OffersClient offers={offers} />;
+  return <OffersClient />;
 }

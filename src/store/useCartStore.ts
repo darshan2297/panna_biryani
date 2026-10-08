@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { CartItem, Product, ProductSize, ExtraItem, OrderType, Offer, ComboPack } from "@/types";
-import { getOfferByCode } from "@/data/offers";
 import { siteConfig } from "@/data/siteConfig";
 import { getDeliverySettings, findPromoCode, getStorefront } from "@/store/useStorefrontStore";
 
@@ -273,7 +272,7 @@ export const useCartStore = create<CartState>()(
               badge: promo.badge || undefined,
               active: promo.active,
             }
-          : getOfferByCode(code);
+          : undefined; // CRM promo codes only — no static offers fallback
         if (!offer) {
           return { success: false, message: "Invalid promo code" };
         }

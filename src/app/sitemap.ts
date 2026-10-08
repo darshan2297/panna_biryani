@@ -1,7 +1,9 @@
 import { MetadataRoute } from "next";
-import { products } from "@/data/products";
+import { hydrateServerStorefront, getServerStorefront } from "@/services/storefront/serverConfig";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const dynamic = "force-dynamic";
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = "https://pannabiryani.in";
 
   // Static marketing routes
@@ -23,13 +25,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: route === "" ? 1.0 : route === "/menu" ? 0.9 : 0.7,
   }));
 
-  // Dynamic product routes
-  const productRoutes = products.map((product) => ({
-    url: `${baseUrl}/menu/${product.slug}`,
-    lastModified: new Date().toISOString(),
-    changeFrequency: "weekly" as const,
-    priority: 0.8,
-  }));
+  // Dynamic product routes from the live CRM menu only
+  let productRoutes: MetadataRoute.Sitemap = [];
+  try {
+    await hydrateServerStorefront();
+    const menu = getServerStorefront().menu;
+    productRoutes = (menu?.products ?? []).map((product) => ({
+      url: `${baseUrl}/menu/${product.slug}`,
+      lastModified: new Date().toISOString(),
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    }));
+  } catch {
+    productRoutes = [];
+  }
 
   return [...routes, ...productRoutes];
 }

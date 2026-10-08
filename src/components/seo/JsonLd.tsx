@@ -1,8 +1,16 @@
 import { siteConfig } from "@/data/siteConfig";
-import { products } from "@/data/products";
-import { faqs } from "@/data/faq";
+import { Product } from "@/types";
+import { hydrateServerStorefront, getServerStorefront } from "@/services/storefront/serverConfig";
 
-export function RestaurantJsonLd() {
+export async function RestaurantJsonLd() {
+  let menuProducts: Product[] = [];
+  try {
+    await hydrateServerStorefront();
+    const menu = getServerStorefront().menu;
+    menuProducts = menu?.products ?? [];
+  } catch {
+    menuProducts = [];
+  }
   const schema = {
     "@context": "https://schema.org",
     "@type": "Restaurant",
@@ -52,7 +60,9 @@ export function RestaurantJsonLd() {
         {
           "@type": "MenuSection",
           name: "Signature Veg Dum Biryanis",
-          hasMenuItem: products.map((p) => ({
+          hasMenuItem: menuProducts
+            .filter((p) => p.sizes && p.sizes.length > 0)
+            .map((p) => ({
             "@type": "MenuItem",
             name: p.name,
             description: p.description,
@@ -76,7 +86,14 @@ export function RestaurantJsonLd() {
   );
 }
 
-export function FAQJsonLd() {
+export async function FAQJsonLd() {
+  let faqs: { question: string; answer: string }[] = [];
+  try {
+    await hydrateServerStorefront();
+    faqs = getServerStorefront().faqs ?? [];
+  } catch {
+    faqs = [];
+  }
   const schema = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -98,11 +115,7 @@ export function FAQJsonLd() {
   );
 }
 
-export function ProductJsonLd({
-  product,
-}: {
-  product: (typeof products)[0];
-}) {
+export function ProductJsonLd({ product }: { product: Product }) {
   const schema = {
     "@context": "https://schema.org",
     "@type": "Product",

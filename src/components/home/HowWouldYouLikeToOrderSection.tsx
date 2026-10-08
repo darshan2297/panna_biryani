@@ -6,12 +6,11 @@ import { Bike, ShoppingBag, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCartStore } from "@/store/useCartStore";
-import { useStorefrontStore, getDeliverySettings, getStorefrontImage } from "@/store/useStorefrontStore";
+import { getDeliverySettings, getStorefrontImage } from "@/store/useStorefrontStore";
 
 export function HowWouldYouLikeToOrderSection() {
   const { setOrderType } = useCartStore();
-  const storefront = useStorefrontStore((s) => s);
-  const ds = { deliveryEnabled: storefront.config ? storefront.config.delivery_enabled : true, pickupEnabled: storefront.config ? storefront.config.pickup_enabled : true, deliveryFee: storefront.config ? Number(storefront.config.delivery_fee) : 49 };
+  const ds = getDeliverySettings();
   const [selectedType, setSelectedType] = useState<"delivery" | "pickup">("pickup");
 
   return (

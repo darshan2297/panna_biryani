@@ -9,12 +9,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 
-export function OffersClient({ offers: staticOffers }: { offers: Offer[] }) {
+export function OffersClient() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const { applyCoupon, setCartDrawerOpen } = useCartStore();
   const promoCodes = useStorefrontStore((s) => s.promoCodes);
 
-  // CRM promo codes take priority; static offers only as fallback
+  // Only CRM promo codes — no static offers fallback
   const offers: Offer[] =
     promoCodes.length > 0
       ? promoCodes
@@ -32,7 +32,7 @@ export function OffersClient({ offers: staticOffers }: { offers: Offer[] }) {
             freeItemName: p.free_item_name || undefined,
             active: p.active,
           }))
-      : staticOffers;
+      : [];
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);

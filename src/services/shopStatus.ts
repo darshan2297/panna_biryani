@@ -1,26 +1,28 @@
 import { ShopStatus, PublicBusinessHours } from "@/types";
 
+// Fail-closed defaults: while the CRM is unreachable we report the shop as
+// closed/unknown rather than inventing an "open" status.
 const DEFAULT_BUSINESS_HOURS: PublicBusinessHours = {
-  is_open: true,
+  is_open: false,
   auto_schedule_enabled: false,
-  display_hours: "5:00 PM - 11:00 PM",
-  status_text: "Accepting Orders",
+  display_hours: "",
+  status_text: "Store status unavailable",
   next_open_text: null,
   holiday_message: null,
   full_schedule: {},
 };
 
 const DEFAULT_SHOP_STATUS: ShopStatus = {
-  website_open: true,
-  is_open: true,
+  website_open: false,
+  is_open: false,
   schedule_active: false,
   business_hours: DEFAULT_BUSINESS_HOURS,
 };
 
 /**
  * Fetches the live shop open/closed state and business hours controlled from
- * the CRM backend. Fails open (treats the shop as open) if the CRM is
- * unreachable, so customers can still browse/order if the CRM service is down.
+ * the CRM backend. Fails closed (treats the shop as closed/unavailable) if the
+ * CRM is unreachable — no data is invented when the API is down.
  */
 export async function getWebsiteShopStatus(): Promise<ShopStatus> {
   try {
@@ -32,10 +34,10 @@ export async function getWebsiteShopStatus(): Promise<ShopStatus> {
     if (!data) return DEFAULT_SHOP_STATUS;
 
     return {
-      website_open: data.website_open !== false,
+      website_open: data.website_open === true,
       zomato_open: data.zomato_open,
       swiggy_open: data.swiggy_open,
-      is_open: data.is_open !== false && data.website_open !== false,
+      is_open: data.is_open === true && data.website_open !== false,
       schedule_active: Boolean(data.schedule_active),
       status_text: data.status_text,
       next_open_text: data.next_open_text ?? null,
