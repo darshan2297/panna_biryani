@@ -487,13 +487,18 @@ export function OrderDetailClient({
                     <tr key={`${item.id}-${idx}`} className="hover:bg-zinc-50/50">
                       <td className="py-3.5 px-4">
                         <div className="flex items-start gap-2.5">
-                          <span className="w-4 h-4 rounded-[3px] border border-emerald-600 flex items-center justify-center shrink-0 mt-0.5 p-[1px] bg-white">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
+                          <span className={`w-4 h-4 rounded-[3px] border flex items-center justify-center shrink-0 mt-0.5 p-[1px] bg-white ${item.isFree ? 'border-amber-500' : 'border-emerald-600'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.isFree ? 'bg-amber-500' : 'bg-emerald-600'}`} />
                           </span>
                           <div>
                             <p className="font-bold text-zinc-900 text-[13px]">
                               {item.productName}
                             </p>
+                            {item.isFree && (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded uppercase">
+                                Free
+                              </span>
+                            )}
                             {item.extras && item.extras.length > 0 && (
                               <div className="text-[11px] text-zinc-500 mt-0.5 space-y-0.5">
                                 {item.extras.map((extra) => (
@@ -517,7 +522,11 @@ export function OrderDetailClient({
                       </td>
 
                       <td className="py-3.5 px-4 text-right font-bold text-zinc-900 text-sm">
-                        {formatINR(item.totalPrice)}
+                        {item.isFree ? (
+                          <span className="text-amber-600 font-bold">FREE</span>
+                        ) : (
+                          formatINR(item.totalPrice)
+                        )}
                       </td>
                     </tr>
                   ))}

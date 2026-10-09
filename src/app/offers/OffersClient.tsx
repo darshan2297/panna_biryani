@@ -2,16 +2,20 @@
 
 import { Offer } from "@/types";
 import { useCartStore } from "@/store/useCartStore";
+import { useUserSessionStore } from "@/store/useUserSessionStore";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { formatINR } from "@/lib/utils";
 import { Gift, Check, Copy, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { CouponMessage } from "@/components/cart/CouponMessage";
 
 export function OffersClient() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [applyNotice, setApplyNotice] = useState<string | null>(null);
   const { applyCoupon, setCartDrawerOpen } = useCartStore();
+  const sessionUser = useUserSessionStore((s) => s.user);
   const promoCodes = useStorefrontStore((s) => s.promoCodes);
 
   // Only CRM promo codes — no static offers fallback
@@ -30,6 +34,8 @@ export function OffersClient() {
             discountType: (p.discount_type === "free_delivery" ? "fixed" : p.discount_type) as Offer["discountType"],
             discountValue: p.discount_value,
             freeItemName: p.free_item_name || undefined,
+            discountOn: p.discount_on,
+            customerType: p.customer_type,
             active: p.active,
           }))
       : [];
@@ -41,14 +47,27 @@ export function OffersClient() {
     setTimeout(() => setCopiedCode(null), 2500);
   };
 
-  const handleApplyDirect = (code: string) => {
-    const res = applyCoupon(code);
+  const handleApplyDirect = async (code: string) => {
+    // Reuse the profile phone when signed in — never re-ask for identity.
+    const profilePhone =
+      sessionUser?.phone && sessionUser.phone.length >= 10 ? sessionUser.phone : undefined;
+
+    const res = await applyCoupon(code, profilePhone);
     if (res.success) {
-      toast.success(res.message);
+      toast.success(res.message, { duration: 4000 });
       setCartDrawerOpen(true);
+      return;
+    }
+
+    // Surface the reason inline in the drawer too, so the message survives
+    // after the toast fades — otherwise a rejected code looks like nothing happened.
+    setApplyNotice(res.requiresPhone ? null : res.message);
+    setCartDrawerOpen(true);
+
+    if (res.requiresPhone) {
+      toast.info("Enter your mobile number in the cart to check eligibility.", { duration: 5000 });
     } else {
-      toast.info(`${res.message}. Add items to your cart first!`);
-      setCartDrawerOpen(true);
+      toast.error(res.message, { duration: 5000 });
     }
   };
 
@@ -72,6 +91,20 @@ export function OffersClient() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
+        {/* Reason a code could not be applied stays visible here, not just in a toast. */}
+        {applyNotice && (
+          <div className="mb-5">
+            <CouponMessage
+              tone="error"
+              action={{
+                label: "Dismiss",
+                onClick: () => setApplyNotice(null),
+              }}
+            >
+              {applyNotice}
+            </CouponMessage>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {offers.map((offer) => (
             <div

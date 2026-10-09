@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCartStore } from "@/store/useCartStore";
+import { useUserSessionStore } from "@/store/useUserSessionStore";
+import { checkAppliedCoupon } from "@/lib/couponCheck";
+import { lookupPhone, startSessionForPhone } from "@/lib/phoneSession";
+import { CouponMessage } from "@/components/cart/CouponMessage";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { useShopGate } from "@/components/shop/useShopGate";
 import { siteConfig } from "@/data/siteConfig";
@@ -21,12 +25,17 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CouponPhonePrompt } from "@/components/cart/CouponPhonePrompt";
 
 export function CartPageContent() {
   const extras = useStorefrontStore((st) => st.extras);
   const [mounted, setMounted] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [phonePrompt, setPhonePrompt] = useState(false);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const sessionUser = useUserSessionStore((s) => s.user);
 
   const [confirmClear, setConfirmClear] = useState(false);
   const { isOpen, guard } = useShopGate();
@@ -73,6 +82,22 @@ export function CartPageContent() {
   const total = typeof getTotal === "function" ? getTotal() : 0;
   const itemCount = typeof getItemCount === "function" ? getItemCount() : 0;
 
+  // Re-check the applied code against the live cart so a discount that stopped
+  // qualifying (items removed, order below minimum) explains itself instead of
+  // silently reverting to ₹0 behind a green "applied" badge.
+  const couponStatus = checkAppliedCoupon(appliedCoupon, {
+    subtotal,
+    itemCount,
+    cartSlugs: itemsList
+      .filter((i) => !i.isFree)
+      .map((i) => i.productSlug || i.productId),
+  });
+  const couponBlocked = !couponStatus.ok;
+  const effectiveDiscount = couponBlocked ? 0 : discount;
+  const effectiveTotal = couponBlocked
+    ? Math.max(0, subtotal + deliveryFee)
+    : total;
+
   if (!mounted) {
     return (
       <div className="bg-[#faf7f2] min-h-screen pt-8 sm:pt-10 pb-20">
@@ -90,18 +115,61 @@ export function CartPageContent() {
     );
   }
 
-  const handleApplyCoupon = (e: React.FormEvent) => {
+  const runApply = async (code: string, phone?: string) => {
+    // If we already know who the customer is, don't ask again — reuse the
+    // profile phone so eligibility resolves in one round trip.
+    const profilePhone =
+      sessionUser?.phone && sessionUser.phone.length >= 10 ? sessionUser.phone : undefined;
+
+    // A number typed into the promo prompt doubles as a sign-in. Establish the
+    // session BEFORE validating: a code can be legitimately refused (FIRSTPANNA
+    // for a returning customer) and the customer must still end up signed in.
+    if (phone && phone !== profilePhone) {
+      const lookup = await lookupPhone(phone);
+      if (lookup.ok) {
+        startSessionForPhone(phone, lookup.name);
+        setSessionNotice(
+          lookup.exists
+            ? `Signed in as +91 ${phone.slice(-10)}.`
+            : `Account created for +91 ${phone.slice(-10)}.`
+        );
+      }
+    }
+
+    const res = await applyCoupon(code, phone ?? profilePhone);
+    if (!res.success) {
+      if (res.requiresPhone) {
+        setPhonePrompt(true);
+        setCouponError("");
+        return;
+      }
+      setPhonePrompt(false);
+      setCouponError(res.message);
+      // Clear the box so a refused code doesn't sit there looking half-applied.
+      // The reason stays visible directly below it.
+      setCouponInput("");
+      return;
+    }
+    setPhonePrompt(false);
+    setCouponError("");
+    toast.success(res.message);
+    setCouponInput("");
+  };
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     setCouponError("");
     if (!couponInput.trim()) return;
-
-    const res = applyCoupon(couponInput.trim());
-    if (!res.success) {
-      setCouponError(res.message);
-    } else {
-      toast.success(res.message);
-      setCouponInput("");
+    setCouponLoading(true);
+    try {
+      await runApply(couponInput.trim());
+    } finally {
+      setCouponLoading(false);
     }
+  };
+
+  const handlePhoneSubmit = async (phone: string) => {
+    await runApply(couponInput.trim(), phone);
   };
 
   const handleAddExtraDirect = (extraItem: (typeof extras)[0]) => {
@@ -223,50 +291,84 @@ export function CartPageContent() {
             {/* Items Container */}
             <div className="bg-white rounded-2xl border border-panna-border p-4 sm:p-6 shadow-xs divide-y divide-panna-border">
               {itemsList.map((item) => {
-                const sizeLabel = item.size?.label || (item.isCombo ? "Combo Pack" : "Portion");
+                const isFree = item.isFree === true;
+                const sizeLabel = isFree
+                  ? "Complimentary"
+                  : item.size?.label || (item.isCombo ? "Combo Pack" : "Portion");
                 const servesText = item.size?.servesText || "";
                 const productImage = item.productImage || "/biryani/veg-dum-biryani.png";
                 const itemQuantity = Math.max(1, Number(item.quantity) || 1);
                 const itemTotal = Number(item.totalPrice) || 0;
 
                 return (
-                  <div key={item.id} className="py-4 first:pt-0 last:pb-0 flex items-start gap-4">
+                  <div
+                    key={item.id}
+                    className={`py-4 first:pt-0 last:pb-0 flex items-start gap-4 ${isFree ? "opacity-95" : ""}`}
+                  >
                     <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden shrink-0 bg-zinc-100 border border-panna-border">
-                      <Image
-                        src={productImage}
-                        alt={item.productName || "Biryani"}
-                        fill
-                        className="object-cover"
-                        sizes="96px"
-                      />
+                      {isFree ? (
+                        <div className="w-full h-full flex items-center justify-center bg-emerald-50">
+                          <Gift className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600" />
+                        </div>
+                      ) : (
+                        <Image
+                          src={productImage}
+                          alt={item.productName || "Biryani"}
+                          fill
+                          className="object-cover"
+                          sizes="96px"
+                        />
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <h3 className="font-serif text-base font-bold text-panna-deep">
+                          <h3
+                            className={`font-serif text-base font-bold ${isFree ? "text-emerald-800" : "text-panna-deep"}`}
+                          >
                             {item.productName}
                           </h3>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">
+                            <span
+                              className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                isFree
+                                  ? "text-emerald-800 bg-emerald-100"
+                                  : "text-emerald-800 bg-emerald-50"
+                              }`}
+                            >
                               {sizeLabel}
                             </span>
-                            {servesText && <span className="text-xs text-zinc-500">{servesText}</span>}
+                            {isFree && (
+                              <span className="text-[10px] font-bold text-white bg-emerald-600 px-1.5 py-0.5 rounded uppercase">
+                                Free Gift
+                              </span>
+                            )}
+                            {servesText && !isFree && (
+                              <span className="text-xs text-zinc-500">{servesText}</span>
+                            )}
                           </div>
+                          {isFree && (
+                            <p className="text-xs text-emerald-700 font-medium mt-1">
+                              Complimentary with {appliedCoupon?.code}
+                            </p>
+                          )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.id)}
-                          className="text-zinc-400 hover:text-red-600 p-1.5 transition-colors cursor-pointer"
-                          aria-label={`Remove ${item.productName}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!isFree && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.id)}
+                            className="text-zinc-400 hover:text-red-600 p-1.5 transition-colors cursor-pointer"
+                            aria-label={`Remove ${item.productName}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
 
                       {/* Extras */}
-                      {item.extras && item.extras.length > 0 && (
+                      {!isFree && item.extras && item.extras.length > 0 && (
                         <div className="mt-2 space-y-0.5 bg-zinc-50 p-2 rounded-lg border border-zinc-100">
                           {item.extras.map((extra, idx) => (
                             <div
@@ -283,31 +385,39 @@ export function CartPageContent() {
                       )}
 
                       <div className="flex items-center justify-between mt-3 pt-2">
-                        <div className="inline-flex items-center border border-panna-border rounded-xl bg-white shadow-2xs">
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.id, itemQuantity - 1)}
-                            className="p-2 text-zinc-600 hover:text-panna-deep hover:bg-zinc-100 rounded-l-xl transition-colors cursor-pointer"
-                            aria-label="Decrease quantity"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="px-3 text-xs font-bold text-panna-deep min-w-[28px] text-center select-none">
-                            {itemQuantity}
+                        {isFree ? (
+                          <span className="text-xs font-semibold text-emerald-700">
+                            Qty {itemQuantity}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.id, itemQuantity + 1)}
-                            className="p-2 text-zinc-600 hover:text-panna-deep hover:bg-zinc-100 rounded-r-xl transition-colors cursor-pointer"
-                            aria-label="Increase quantity"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        ) : (
+                          <div className="inline-flex items-center border border-panna-border rounded-xl bg-white shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.id, itemQuantity - 1)}
+                              className="p-2 text-zinc-600 hover:text-panna-deep hover:bg-zinc-100 rounded-l-xl transition-colors cursor-pointer"
+                              aria-label="Decrease quantity"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="px-3 text-xs font-bold text-panna-deep min-w-[28px] text-center select-none">
+                              {itemQuantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.id, itemQuantity + 1)}
+                              className="p-2 text-zinc-600 hover:text-panna-deep hover:bg-zinc-100 rounded-r-xl transition-colors cursor-pointer"
+                              aria-label="Increase quantity"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
 
                         <div className="text-right">
-                          <span className="text-base font-black text-panna-deep">
-                            {formatINR(itemTotal)}
+                          <span
+                            className={`text-base font-black ${isFree ? "text-emerald-700" : "text-panna-deep"}`}
+                          >
+                            {isFree ? "FREE" : formatINR(itemTotal)}
                           </span>
                         </div>
                       </div>
@@ -380,21 +490,56 @@ export function CartPageContent() {
             {/* Promo Code Card */}
             <div className="bg-white p-4 rounded-xl border border-panna-border shadow-xs">
               {appliedCoupon ? (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <div>
-                      <span className="font-bold text-emerald-950">{appliedCoupon.code}</span>
-                      <p className="text-[11px] text-emerald-700">{appliedCoupon.title}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={removeCoupon}
-                    className="text-xs font-semibold text-red-600 hover:underline"
+                <div className="space-y-2">
+                  <div
+                    className={
+                      couponBlocked
+                        ? "bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between text-xs"
+                        : "bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center justify-between text-xs"
+                    }
                   >
-                    Remove
-                  </button>
+                    <div className="flex items-center gap-2">
+                      {couponBlocked ? (
+                        <AlertCircle className="w-4 h-4 text-amber-600" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      )}
+                      <div>
+                        <span
+                          className={
+                            couponBlocked ? "font-bold text-amber-950" : "font-bold text-emerald-950"
+                          }
+                        >
+                          {appliedCoupon.code}
+                        </span>
+                        <p
+                          className={
+                            couponBlocked
+                              ? "text-[11px] text-amber-700"
+                              : "text-[11px] text-emerald-700"
+                          }
+                        >
+                          {couponBlocked ? "Not applying" : appliedCoupon.title}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeCoupon}
+                      className="text-xs font-semibold text-red-600 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  {!couponStatus.ok && (
+                    <CouponMessage
+                      tone="warning"
+                      action={{ label: "Remove code", onClick: removeCoupon }}
+                    >
+                      {appliedCoupon.code} is not applying: {couponStatus.reason}
+                    </CouponMessage>
+                  )}
                 </div>
               ) : (
                 <form onSubmit={handleApplyCoupon} className="space-y-1.5">
@@ -411,13 +556,42 @@ export function CartPageContent() {
                     </div>
                     <button
                       type="submit"
-                      className="bg-panna-forest hover:bg-panna-deep text-white font-bold text-xs px-4 py-2.5 rounded-lg transition-colors"
+                      disabled={couponLoading}
+                      className="bg-panna-forest hover:bg-panna-deep disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-xs px-4 py-2.5 rounded-lg transition-colors"
                     >
-                      Apply
+                      {couponLoading ? "Checking…" : "Apply"}
                     </button>
                   </div>
-                  {couponError && <p className="text-xs text-red-600">{couponError}</p>}
+                  {phonePrompt ? (
+                    <div className="mt-2">
+                      <CouponPhonePrompt
+                        code={couponInput.trim().toUpperCase()}
+                        error={couponError}
+                        onCancel={() => {
+                          setPhonePrompt(false);
+                          setCouponError("");
+                          setCouponInput("");
+                        }}
+                        onSubmit={handlePhoneSubmit}
+                      />
+                    </div>
+                  ) : (
+                    couponError && <CouponMessage tone="error">{couponError}</CouponMessage>
+                  )}
                 </form>
+              )}
+
+              {/* Identity confirmation from the promo phone prompt — kept outside
+                  the applied/not-applied branches so it survives a successful apply. */}
+              {sessionNotice && (
+                <div className="mt-2">
+                  <CouponMessage
+                    tone="success"
+                    action={{ label: "Dismiss", onClick: () => setSessionNotice(null) }}
+                  >
+                    {sessionNotice}
+                  </CouponMessage>
+                </div>
               )}
             </div>
 
@@ -432,10 +606,10 @@ export function CartPageContent() {
                 <span className="font-semibold text-panna-deep">{formatINR(subtotal)}</span>
               </div>
 
-              {discount > 0 && (
+              {effectiveDiscount > 0 && (
                 <div className="flex items-center justify-between text-emerald-700 font-medium">
                   <span>Coupon Discount ({appliedCoupon?.code})</span>
-                  <span>- {formatINR(discount)}</span>
+                  <span>- {formatINR(effectiveDiscount)}</span>
                 </div>
               )}
 
@@ -455,7 +629,7 @@ export function CartPageContent() {
 
               <div className="pt-3 border-t border-dashed border-panna-border flex items-center justify-between text-base font-bold text-panna-deep">
                 <span>Total Amount</span>
-                <span className="text-xl text-panna-forest">{formatINR(total)}</span>
+                <span className="text-xl text-panna-forest">{formatINR(effectiveTotal)}</span>
               </div>
               <p className="text-[10px] text-zinc-400 text-right">Taxes included</p>
 

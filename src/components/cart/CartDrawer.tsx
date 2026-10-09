@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCartStore } from "@/store/useCartStore";
+import { useUserSessionStore } from "@/store/useUserSessionStore";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
 import { useShopGate } from "@/components/shop/useShopGate";
 import { formatINR, cn } from "@/lib/utils";
@@ -22,6 +23,10 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CouponPhonePrompt } from "@/components/cart/CouponPhonePrompt";
+import { CouponMessage } from "@/components/cart/CouponMessage";
+import { checkAppliedCoupon } from "@/lib/couponCheck";
+import { lookupPhone, startSessionForPhone } from "@/lib/phoneSession";
 
 export function CartDrawer() {
   const extras = useStorefrontStore((st) => st.extras);
@@ -47,6 +52,9 @@ export function CartDrawer() {
   const [mounted, setMounted] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
+  const [phonePrompt, setPhonePrompt] = useState(false);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const sessionUser = useUserSessionStore((s) => s.user);
   const [confirmClear, setConfirmClear] = useState(false);
   const { isOpen, guard } = useShopGate();
 
@@ -88,17 +96,67 @@ export function CartDrawer() {
   const total = typeof getTotal === "function" ? getTotal() : 0;
   const itemCount = typeof getItemCount === "function" ? getItemCount() : 0;
 
-  const handleApplyCoupon = (e: React.FormEvent) => {
+  // Explain a code that stopped qualifying after the cart changed.
+  const couponStatus = checkAppliedCoupon(appliedCoupon, {
+    subtotal,
+    itemCount,
+    cartSlugs: itemsList
+      .filter((i) => !i.isFree)
+      .map((i) => i.productSlug || i.productId),
+  });
+  const couponBlocked = !couponStatus.ok;
+  const effectiveDiscount = couponBlocked ? 0 : discount;
+  const effectiveTotal = couponBlocked ? Math.max(0, subtotal + deliveryFee) : total;
+
+  const runApply = async (code: string, phone?: string) => {
+    // Reuse the profile phone when signed in so we don't re-ask.
+    const profilePhone =
+      sessionUser?.phone && sessionUser.phone.length >= 10 ? sessionUser.phone : undefined;
+
+    // A number typed into the promo prompt doubles as a sign-in. Establish the
+    // session BEFORE validating: a code can be legitimately refused (FIRSTPANNA
+    // for a returning customer) and the customer must still end up signed in.
+    if (phone && phone !== profilePhone) {
+      const lookup = await lookupPhone(phone);
+      if (lookup.ok) {
+        startSessionForPhone(phone, lookup.name);
+        setSessionNotice(
+          lookup.exists
+            ? `Signed in as +91 ${phone.slice(-10)}.`
+            : `Account created for +91 ${phone.slice(-10)}.`
+        );
+      }
+    }
+
+    const res = await applyCoupon(code, phone ?? profilePhone);
+    if (!res.success) {
+      if (res.requiresPhone) {
+        setPhonePrompt(true);
+        setCouponError("");
+        return;
+      }
+      setPhonePrompt(false);
+      setCouponError(res.message);
+      // Clear the box so a refused code doesn't sit there looking half-applied.
+      // The reason stays visible directly below it.
+      setCouponInput("");
+      return;
+    }
+    setPhonePrompt(false);
+    setCouponError("");
+    toast.success(res.message);
+    setCouponInput("");
+  };
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
     setCouponError("");
     if (!couponInput.trim()) return;
+    await runApply(couponInput.trim());
+  };
 
-    const res = applyCoupon(couponInput.trim());
-    if (!res.success) {
-      setCouponError(res.message);
-    } else {
-      setCouponInput("");
-    }
+  const handlePhoneSubmit = async (phone: string) => {
+    await runApply(couponInput.trim(), phone);
   };
 
   const handleAddExtraDirect = (extraItem: (typeof extras)[0]) => {
@@ -385,13 +443,35 @@ export function CartDrawer() {
                   </div>
                 </div>
 
+                {/* Free Item from Promo Code */}
+                {appliedCoupon?.discountType === "free_item" && appliedCoupon?.freeItemName && (
+                  <div className="py-3 flex items-start gap-3 border-t border-dashed border-panna-border/60">
+                    <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0 border border-panna-border bg-amber-50 flex items-center justify-center">
+                      <Gift className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-1">
+                        <h4 className="font-serif text-sm font-bold text-panna-deep truncate">
+                          {appliedCoupon.freeItemName}
+                        </h4>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">
+                          FREE
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                        Complimentary with {appliedCoupon.code}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Free Dessert Gift Alert */}
                 {subtotal >= siteConfig.pricingRules.firstOrderFreeDessertThreshold && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900 flex items-start gap-2.5">
                     <Gift className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-bold text-amber-950">
-                        First Order Gift Unlocked! 🍮
+                        First Order Gift Unlocked!
                       </span>
                       <p className="text-[11px] text-amber-800 mt-0.5">
                         Your complimentary Shahi Brownie dessert will be packed with your order.
@@ -403,13 +483,36 @@ export function CartDrawer() {
                 {/* Coupon Code Section */}
                 <div className="pt-2 border-t border-panna-border">
                   {appliedCoupon ? (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <div>
-                          <span className="font-bold text-emerald-900">{appliedCoupon.code}</span>
-                          <span className="text-[11px] text-emerald-700 block">
-                            {appliedCoupon.title} applied
+                    <div className="space-y-1.5">
+                      <div
+                        className={
+                          couponBlocked
+                            ? "bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex items-center justify-between text-xs"
+                            : "bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between text-xs"
+                        }
+                      >
+                        <div className="flex items-center gap-2">
+                          {couponBlocked ? (
+                            <AlertCircle className="w-4 h-4 text-amber-600" />
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          )}
+                          <div>
+                            <span
+                              className={
+                                couponBlocked ? "font-bold text-amber-900" : "font-bold text-emerald-900"
+                              }
+                            >
+                              {appliedCoupon.code}
+                            </span>
+                          <span
+                            className={
+                              couponBlocked
+                                ? "text-[11px] text-amber-700 block"
+                                : "text-[11px] text-emerald-700 block"
+                            }
+                          >
+                            {couponBlocked ? "Not applying" : `${appliedCoupon.title} applied`}
                           </span>
                         </div>
                       </div>
@@ -420,6 +523,15 @@ export function CartDrawer() {
                       >
                         Remove
                       </button>
+                    </div>
+                      {!couponStatus.ok && (
+                        <CouponMessage
+                          tone="warning"
+                          action={{ label: "Remove", onClick: removeCoupon }}
+                        >
+                          {appliedCoupon.code} is not applying: {couponStatus.reason}
+                        </CouponMessage>
+                      )}
                     </div>
                   ) : (
                     <form onSubmit={handleApplyCoupon} className="space-y-1">
@@ -441,8 +553,34 @@ export function CartDrawer() {
                           Apply
                         </button>
                       </div>
-                      {couponError && <p className="text-[11px] text-red-600">{couponError}</p>}
+                      {phonePrompt ? (
+                      <div className="mt-1.5">
+                        <CouponPhonePrompt
+                          code={couponInput.trim().toUpperCase()}
+                          error={couponError}
+                          onCancel={() => {
+                            setPhonePrompt(false);
+                            setCouponError("");
+                            setCouponInput("");
+                          }}
+                          onSubmit={handlePhoneSubmit}
+                        />
+                      </div>
+                    ) : (
+                      couponError && <CouponMessage tone="error">{couponError}</CouponMessage>
+                    )}
                     </form>
+                  )}
+
+                  {/* Outside the branches so it survives a successful apply. */}
+                  {sessionNotice && (
+                    <CouponMessage
+                      tone="success"
+                      className="mt-1.5"
+                      action={{ label: "Dismiss", onClick: () => setSessionNotice(null) }}
+                    >
+                      {sessionNotice}
+                    </CouponMessage>
                   )}
                 </div>
 
@@ -453,10 +591,10 @@ export function CartDrawer() {
                     <span className="font-semibold text-panna-deep">{formatINR(subtotal)}</span>
                   </div>
 
-                  {discount > 0 && (
+                  {effectiveDiscount > 0 && (
                     <div className="flex items-center justify-between text-emerald-700 font-medium">
                       <span>Discount ({appliedCoupon?.code})</span>
-                      <span>- {formatINR(discount)}</span>
+                      <span>- {formatINR(effectiveDiscount)}</span>
                     </div>
                   )}
 
@@ -476,7 +614,7 @@ export function CartDrawer() {
 
                   <div className="pt-2 border-t border-dashed border-panna-border flex items-center justify-between text-sm font-bold text-panna-deep">
                     <span>Final Amount</span>
-                    <span className="text-base text-panna-forest">{formatINR(total)}</span>
+                    <span className="text-base text-panna-forest">{formatINR(effectiveTotal)}</span>
                   </div>
                   <p className="text-[10px] text-zinc-400 text-right">Inclusive of all taxes</p>
                 </div>

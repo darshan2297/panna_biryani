@@ -39,6 +39,7 @@ const checkoutSchema = z.object({
           )
           .optional(),
         isCombo: z.boolean().optional(),
+        isFree: z.boolean().optional(),
       })
     )
     .min(1, "At least one item is required to place an order"),

@@ -20,8 +20,10 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CouponMessage } from "@/components/cart/CouponMessage";
 import { trackEvent } from "@/services/analytics/analyticsService";
 import { useUserSessionStore } from "@/store/useUserSessionStore";
+import { isPlaceholderName } from "@/lib/phoneSession";
 
 export function CheckoutForm() {
   const storefrontMethods = useStorefrontStore((st) => st.paymentMethods);
@@ -46,6 +48,7 @@ export function CheckoutForm() {
   );
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     items,
@@ -68,7 +71,12 @@ export function CheckoutForm() {
     useCartStore.getState().setSelectedArea(selectedArea, pincode);
     const existingUser = useUserSessionStore.getState().user;
     if (existingUser) {
-      if (existingUser.name) setFullName((prev) => prev || existingUser.name);
+      // A promo-gated sign-in can leave a placeholder (or no) name in the
+      // session. Never pre-fill that into a required field — otherwise the
+      // placeholder gets submitted as the customer's real name on the order.
+      if (existingUser.name && !isPlaceholderName(existingUser.name)) {
+        setFullName((prev) => prev || existingUser.name);
+      }
       if (existingUser.phone) setPhone((prev) => prev || existingUser.phone);
       if (existingUser.email) setEmail((prev) => prev || existingUser.email || "");
     }
@@ -174,6 +182,7 @@ export function CheckoutForm() {
           sizeId: item.size.id,
           quantity: item.quantity,
           isCombo: item.isCombo,
+          isFree: item.isFree === true,
           extraIds: item.extras?.map((e) => ({
             id: e.extra.id,
             quantity: e.quantity,
@@ -246,6 +255,7 @@ export function CheckoutForm() {
       router.push(`/order-success/${order.id}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
+      setSubmitError(msg);
       toast.error(msg);
       setIsSubmitting(false);
     }
@@ -264,6 +274,13 @@ export function CheckoutForm() {
         </div>
 
         <form onSubmit={handleSubmitOrder}>
+          {/* Server-side rejections (invalid/eligible-gated promo, closed shop,
+              verification failure) stay visible until the next attempt. */}
+          {submitError && (
+            <div className="mb-5">
+              <CouponMessage tone="error">{submitError}</CouponMessage>
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Left Column: Checkout Inputs (8 cols) */}
             <div className="lg:col-span-8 space-y-6">

@@ -6,12 +6,21 @@ import { Bike, ShoppingBag, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCartStore } from "@/store/useCartStore";
-import { getDeliverySettings, getStorefrontImage } from "@/store/useStorefrontStore";
+import { useStorefrontStore, getStorefrontImage } from "@/store/useStorefrontStore";
 
 export function HowWouldYouLikeToOrderSection() {
   const { setOrderType } = useCartStore();
-  const ds = getDeliverySettings();
+  const config = useStorefrontStore((s) => s.config);
+  const loaded = useStorefrontStore((s) => s.loaded);
   const [selectedType, setSelectedType] = useState<"delivery" | "pickup">("pickup");
+
+  // Default to showing both options while loading or when config is unavailable
+  const deliveryEnabled = config ? config.delivery_enabled : true;
+  const pickupEnabled = config ? config.pickup_enabled : true;
+  const deliveryFee = config ? Number(config.delivery_fee) : 0;
+
+  // Don't render until storefront has attempted to load
+  if (!loaded) return null;
 
   return (
     <section className="pt-2 pb-6 bg-[#FAF7F2] select-none">
@@ -30,7 +39,7 @@ export function HowWouldYouLikeToOrderSection() {
 
               <div className="grid grid-cols-2 gap-2">
                 {/* 1. Delivery Card */}
-                {ds.deliveryEnabled !== false && (
+                {deliveryEnabled !== false && (
                 <div
                   onClick={() => {
                     setSelectedType("delivery");
@@ -48,7 +57,7 @@ export function HowWouldYouLikeToOrderSection() {
                   <div className="space-y-0.5 w-full">
                     <h4 className="font-bold text-[13px] text-[#17332C]">Delivery</h4>
                     <p className="text-[11px] text-[#556963] leading-tight">Fast &amp; Safe Delivery</p>
-                    <p className="text-[10.5px] text-[#888]">₹{ds.deliveryFee} (extra)</p>
+                    <p className="text-[10.5px] text-[#888]">₹{deliveryFee} (extra)</p>
                   </div>
                   {/* Preference bar */}
                   <div className="w-full space-y-1 pt-1">
@@ -64,7 +73,7 @@ export function HowWouldYouLikeToOrderSection() {
 
                 )}
                 {/* 2. Pickup Card */}
-                {ds.pickupEnabled !== false && (
+                {pickupEnabled !== false && (
                 <div
                   onClick={() => {
                     setSelectedType("pickup");

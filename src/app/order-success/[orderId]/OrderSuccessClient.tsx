@@ -133,9 +133,16 @@ export function OrderSuccessClient({ order }: { order: Order }) {
                     </p>
                   ))}
                 </div>
-                <span className="font-bold text-panna-deep text-sm shrink-0">
-                  {formatINR(item.totalPrice)}
-                </span>
+                <div className="text-right shrink-0">
+                  {item.isFree && (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">
+                      FREE
+                    </span>
+                  )}
+                  <p className="font-bold text-panna-deep text-sm">
+                    {item.isFree ? "₹0.00" : formatINR(item.totalPrice)}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
