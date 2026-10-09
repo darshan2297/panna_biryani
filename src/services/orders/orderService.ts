@@ -10,6 +10,7 @@ function currentMenu() {
 import { siteConfig } from "@/data/siteConfig";
 import { getServerStorefront } from "@/services/storefront/serverConfig";
 import { forwardOrderToCrm } from "@/services/storefront/crmOrderService";
+import { validatePromoCode, redeemPromoCode, resolveDiscountAmount, PHONE_REQUIRED } from "@/services/storefront/configService";
 import { calculateDeliveryFee } from "@/services/delivery/deliveryService";
 import {
   CartItem,
@@ -21,6 +22,9 @@ import {
 } from "@/types";
 import { generateOrderNumber } from "@/lib/utils";
 
+/** Display label for the complimentary promo gift line item. */
+const FREE_ITEM_DISPLAY_NAME = "Complimentary Shahi Brownie Sweet";
+
 export interface CreateOrderInput {
   customerName: string;
   phone: string;
@@ -31,6 +35,7 @@ export interface CreateOrderInput {
     quantity: number;
     extraIds?: { id: string; quantity: number }[];
     isCombo?: boolean;
+    isFree?: boolean;
   }[];
   orderType: OrderType;
   deliveryAddress?: DeliveryAddress;
@@ -43,6 +48,8 @@ export interface OrderCalculationResult {
   validatedItems: CartItem[];
   subtotal: number;
   discount: number;
+  discountType?: "fixed" | "percentage" | "free_item" | "free_delivery";
+  freeItemName?: string;
   appliedCoupon?: string;
   deliveryFee: number;
   tax: number;
@@ -74,6 +81,32 @@ export function calculateOrderTotals(
   let subtotal = 0;
 
   for (const itemInput of items) {
+    // Complimentary promo gift: carried through at ₹0 and never menu-validated.
+    if (itemInput.isFree) {
+      const freeQty = Math.max(1, Math.min(5, itemInput.quantity));
+      validatedItems.push({
+        id: `${itemInput.productId}-free`,
+        productId: itemInput.productId,
+        productName: FREE_ITEM_DISPLAY_NAME,
+        productSlug: itemInput.productId,
+        productImage: "",
+        isCombo: false,
+        isFree: true,
+        size: {
+          id: "single",
+          label: "Complimentary",
+          weightGrams: 0,
+          price: 0,
+          servesText: "1 pc",
+        },
+        quantity: freeQty,
+        extras: [],
+        unitBasePrice: 0,
+        totalPrice: 0,
+      });
+      continue;
+    }
+
     if (itemInput.isCombo) {
       // Find matching combo
       const { combos, products, extras } = currentMenu();
@@ -162,6 +195,8 @@ export function calculateOrderTotals(
   // Coupon discount calculation
   let discount = 0;
   let appliedCoupon: string | undefined = undefined;
+  let discountType: "fixed" | "percentage" | "free_item" | "free_delivery" | undefined;
+  let freeItemName: string | undefined;
 
   if (couponCode) {
     const srv = getServerStorefront();
@@ -172,23 +207,30 @@ export function calculateOrderTotals(
       ? {
           discountType:
             promo.discount_type === "percentage"
-              ? "percentage"
+              ? ("percentage" as const)
               : promo.discount_type === "free_item"
-              ? "free_item"
-              : "fixed",
+              ? ("free_item" as const)
+              : ("fixed" as const),
           discountValue: promo.discount_value,
         }
       : undefined;
     const minOrder = promo ? promo.min_order_value : 0;
     if (offer && subtotal >= minOrder) {
       appliedCoupon = promo?.code;
-      if (offer.discountType === "fixed") {
-        discount = offer.discountValue;
-      } else if (offer.discountType === "percentage") {
-        discount = Math.round((subtotal * offer.discountValue) / 100);
-      } else if (offer.discountType === "free_item") {
-        // Free item is given as complimentary item or fixed value offset
-        discount = 0; // Value is shown as free gift
+      discountType = offer.discountType;
+      if (offer.discountType === "free_item") {
+        discount = 0;
+        freeItemName = promo?.free_item_name || undefined;
+      } else {
+        // Shared resolver so the cart preview and this server-side figure agree.
+        discount = Math.round(
+          resolveDiscountAmount({
+            discountType: offer.discountType,
+            discountValue: offer.discountValue,
+            maxDiscountAmount: promo?.max_discount_amount,
+            subtotal,
+          })
+        );
       }
     }
   }
@@ -203,6 +245,8 @@ export function calculateOrderTotals(
     validatedItems,
     subtotal,
     discount,
+    discountType,
+    freeItemName,
     appliedCoupon,
     deliveryFee,
     tax: 0,
@@ -216,6 +260,8 @@ export function calculateOrderTotals(
  * Create a new order with server validation
  */
 export async function createOrder(input: CreateOrderInput): Promise<Order> {
+  // Compute real totals first: the authoritative promo re-check below needs the
+  // actual order value, because the server enforces min_order_value against it.
   const calculation = calculateOrderTotals(
     input.items,
     input.orderType,
@@ -226,6 +272,35 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 
   if (calculation.validatedItems.length === 0) {
     throw new Error("Cannot create order with empty or unavailable items.");
+  }
+
+  // Authoritative promo re-check now that the customer's phone AND the real
+  // cart totals are known. Enforces first_order_only / customer_type,
+  // min/max thresholds and per-user redemption limits.
+  if (input.couponCode) {
+    const srv = getServerStorefront();
+    const promo = (srv.promoCodes || []).find(
+      (p) => p.code.toUpperCase() === input.couponCode!.trim().toUpperCase() && p.active
+    );
+    if (promo) {
+      // The complimentary gift is not part of the paid cart: it must neither
+      // count toward the threshold nor be matched against applicable_items.
+      const paidItems = calculation.validatedItems.filter((i) => !i.isFree);
+      const result = await validatePromoCode({
+        code: promo.code,
+        orderValue: calculation.subtotal,
+        itemCount: paidItems.reduce((n, i) => n + (i.quantity || 0), 0),
+        cartItemSlugs: paidItems.map((i) => i.productSlug || i.productId),
+        customerPhone: input.phone.trim(),
+      });
+      if (result && !result.valid) {
+        throw new Error(
+          result.reason === PHONE_REQUIRED
+            ? "A valid mobile number is required to use this promo code."
+            : result.reason || "This promo code is not valid for your account."
+        );
+      }
+    }
   }
 
   const orderId = `order_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -240,6 +315,8 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
     items: calculation.validatedItems,
     subtotal: calculation.subtotal,
     discount: calculation.discount,
+    discountType: calculation.discountType,
+    freeItemName: calculation.freeItemName,
     appliedCoupon: calculation.appliedCoupon,
     deliveryFee: calculation.deliveryFee,
     tax: calculation.tax,
@@ -264,6 +341,16 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
     newOrder.crmOrderNumber = crmOrderNumber;
     ordersStore.set(orderId, newOrder);
     ordersStore.set(orderNumber, newOrder);
+  }
+
+  // Burn the promo redemption against this phone so per-user limits hold
+  // across future orders. Failure must not block the order itself.
+  if (input.couponCode) {
+    try {
+      await redeemPromoCode({ code: input.couponCode, customerPhone: input.phone.trim() });
+    } catch {
+      /* non-fatal: order already placed */
+    }
   }
 
   return newOrder;
