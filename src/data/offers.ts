@@ -1,5 +1,10 @@
 import { Offer } from "@/types";
 
+/**
+ * Legacy hard-coded offers. Superseded by CRM promo codes — the storefront
+ * store reads from the backend and no longer falls back to this list.
+ * Kept only so the `Offer` type stays exercised; new offers belong in the CRM.
+ */
 export const offers: Offer[] = [
   {
     id: "offer-first-order",
@@ -12,6 +17,8 @@ export const offers: Offer[] = [
     discountValue: 89,
     freeItemName: "Complimentary Shahi Brownie Sweet",
     minOrderValue: 299,
+    discountOn: "amount",
+    customerType: "new",
     badge: "Special Welcome Gift",
     active: true,
   },
@@ -24,6 +31,8 @@ export const offers: Offer[] = [
     discountType: "fixed",
     discountValue: 100,
     minOrderValue: 999,
+    discountOn: "amount",
+    customerType: "all",
     badge: "Save ₹100",
     active: true,
   },
@@ -32,10 +41,13 @@ export const offers: Offer[] = [
     code: "FREEDEL",
     title: "Free Doorstep Delivery",
     subtitle: "Complimentary Delivery in Surat",
-    description: "Enjoy zero delivery fee on all orders of ₹800 and above anywhere within our Surat delivery network.",
+    description:
+      "Enjoy zero delivery fee on all orders of ₹800 and above anywhere within our Surat delivery network.",
     discountType: "fixed",
     discountValue: 49,
     minOrderValue: 800,
+    discountOn: "amount",
+    customerType: "all",
     badge: "Free Delivery",
     active: true,
   },

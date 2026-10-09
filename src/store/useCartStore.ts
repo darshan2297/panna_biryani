@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { CartItem, Product, ProductSize, ExtraItem, OrderType, Offer, ComboPack } from "@/types";
 import { siteConfig } from "@/data/siteConfig";
 import { getDeliverySettings, findPromoCode, getStorefront } from "@/store/useStorefrontStore";
+import { validatePromoCode, resolveDiscountAmount, PHONE_REQUIRED } from "@/services/storefront/configService";
 
 interface CartState {
   items: CartItem[];
@@ -27,7 +28,10 @@ interface CartState {
   clearCart: () => void;
   setOrderType: (type: OrderType) => void;
   setSelectedArea: (area: string, pincode?: string) => void;
-  applyCoupon: (code: string) => { success: boolean; message: string };
+  applyCoupon: (
+    code: string,
+    customerPhone?: string
+  ) => Promise<{ success: boolean; message: string; requiresPhone?: boolean }>;
   removeCoupon: () => void;
   setSpecialInstructions: (instructions: string) => void;
   setCartDrawerOpen: (isOpen: boolean) => void;
@@ -250,34 +254,54 @@ export const useCartStore = create<CartState>()(
         set({ selectedArea: area || "Vesu", pincode: pincode || "395007" });
       },
 
-      applyCoupon: (code) => {
-        const cartSlugs = (get().items || []).map((item) => item.productSlug || item.productId);
+      applyCoupon: async (code, customerPhone) => {
+        const state = get();
+        const cartItems = state.items || [];
+        const cartSlugs = cartItems
+          .filter((i) => !i.isFree)
+          .map((item) => item.productSlug || item.productId);
         const promo = findPromoCode(code, cartSlugs);
-        const offer: Offer | undefined = promo
-          ? {
-              id: String(promo.id),
-              code: promo.code,
-              title: promo.title,
-              subtitle: promo.subtitle || "",
-              description: promo.description || "",
-              discountType:
-                promo.discount_type === "percentage"
-                  ? "percentage"
-                  : promo.discount_type === "free_item"
-                  ? "free_item"
-                  : "fixed",
-              discountValue: promo.discount_value,
-              freeItemName: promo.free_item_name || undefined,
-              minOrderValue: promo.min_order_value,
-              badge: promo.badge || undefined,
-              active: promo.active,
-            }
-          : undefined; // CRM promo codes only — no static offers fallback
-        if (!offer) {
+        if (!promo) {
           return { success: false, message: "Invalid promo code" };
         }
 
-        const subtotal = get().getSubtotal();
+        const offer: Offer = {
+          id: String(promo.id),
+          code: promo.code,
+          title: promo.title,
+          subtitle: promo.subtitle || "",
+          description: promo.description || "",
+          discountType:
+            promo.discount_type === "percentage"
+              ? "percentage"
+              : promo.discount_type === "free_item"
+              ? "free_item"
+              : "fixed",
+          discountValue: promo.discount_value,
+          maxDiscountAmount: promo.max_discount_amount ?? null,
+          freeItemName: promo.free_item_name || undefined,
+          minOrderValue: promo.min_order_value,
+          maxOrderValue: promo.max_order_value ?? null,
+          discountOn: promo.discount_on,
+          minQuantity: promo.min_quantity ?? null,
+          maxQuantity: promo.max_quantity ?? null,
+          customerType: promo.customer_type,
+          validFrom: promo.valid_from,
+          validUntil: promo.valid_until,
+          applicableItems: promo.applicable_items,
+          termsConditions: promo.terms_conditions,
+          badge: promo.badge || undefined,
+          active: promo.active,
+          firstOrderOnly: promo.first_order_only === true,
+        };
+
+        // Drop any free gift left over from a previously applied coupon
+        const itemsWithoutFree = cartItems.filter((i) => !i.isFree);
+
+        const subtotal = itemsWithoutFree.reduce(
+          (sum, item) => sum + (Number(item?.totalPrice) || 0),
+          0
+        );
         if (subtotal < (offer.minOrderValue || 0)) {
           return {
             success: false,
@@ -285,8 +309,11 @@ export const useCartStore = create<CartState>()(
           };
         }
 
-        if (promo && promo.minimum_order_items != null) {
-          const itemCount = get().getItemCount();
+        if (promo.minimum_order_items != null) {
+          const itemCount = itemsWithoutFree.reduce(
+            (sum, item) => sum + (Number(item.quantity) || 0),
+            0
+          );
           if (itemCount < promo.minimum_order_items) {
             return {
               success: false,
@@ -295,12 +322,73 @@ export const useCartStore = create<CartState>()(
           }
         }
 
-        set({ appliedCoupon: offer });
-        return { success: true, message: `Offer '${offer.code}' applied successfully!` };
+        // Server-side validation: enforces first_order_only, event windows,
+        // min/max thresholds and per-user limits.
+        const validation = await validatePromoCode({
+          code: offer.code,
+          orderValue: subtotal,
+          itemCount: itemsWithoutFree.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
+          cartItemSlugs: cartSlugs,
+          customerPhone,
+        });
+        if (validation && !validation.valid) {
+          if (validation.reason === PHONE_REQUIRED) {
+            return {
+              success: false,
+              message: "Enter your mobile number to check eligibility for this offer.",
+              requiresPhone: true,
+            };
+          }
+          return {
+            success: false,
+            message: validation.reason || "This promo code cannot be applied to your order.",
+          };
+        }
+
+        // Attach the complimentary gift as a real ₹0 cart line item so it is
+        // visible in the cart, counted, and carried through to the KOT/invoice.
+        let nextItems = itemsWithoutFree;
+        if (offer.discountType === "free_item" && offer.freeItemName) {
+          nextItems = [
+            ...itemsWithoutFree,
+            {
+              id: `free-gift-${offer.code}`,
+              productId: `free-gift-${offer.code}`,
+              productName: offer.freeItemName,
+              productSlug: `free-gift-${offer.code}`,
+              productImage: "",
+              isCombo: false,
+              isFree: true,
+              size: {
+                id: "single",
+                label: "Complimentary",
+                weightGrams: 0,
+                price: 0,
+                servesText: "1 pc",
+              },
+              quantity: 1,
+              extras: [],
+              unitBasePrice: 0,
+              totalPrice: 0,
+            },
+          ];
+        }
+
+        set({ appliedCoupon: offer, items: nextItems });
+        return {
+          success: true,
+          message:
+            offer.discountType === "free_item" && offer.freeItemName
+              ? `${offer.freeItemName} added FREE to your order!`
+              : `Offer '${offer.code}' applied successfully!`,
+        };
       },
 
       removeCoupon: () => {
-        set({ appliedCoupon: null });
+        set({
+          appliedCoupon: null,
+          items: (get().items || []).filter((i) => !i.isFree),
+        });
       },
 
       setSpecialInstructions: (instructions) => {
@@ -344,13 +432,14 @@ export const useCartStore = create<CartState>()(
         const subtotal = state.getSubtotal();
         if (subtotal < (state.appliedCoupon.minOrderValue || 0)) return 0;
 
-        if (state.appliedCoupon.discountType === "fixed") {
-          return Number(state.appliedCoupon.discountValue) || 0;
-        } else if (state.appliedCoupon.discountType === "percentage") {
-          const pct = Number(state.appliedCoupon.discountValue) || 0;
-          return Math.round((subtotal * pct) / 100);
-        }
-        return 0;
+        return Math.round(
+          resolveDiscountAmount({
+            discountType: state.appliedCoupon.discountType,
+            discountValue: state.appliedCoupon.discountValue,
+            maxDiscountAmount: state.appliedCoupon.maxDiscountAmount,
+            subtotal,
+          })
+        );
       },
 
       getTotal: () => {

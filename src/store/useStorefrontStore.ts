@@ -167,6 +167,16 @@ export function findPromoCode(code: string, cartItemSlugs?: string[]): PromoCode
       if (p.valid_until && new Date(p.valid_until).getTime() < now) return false;
       if (p.max_uses != null && (p.used_count ?? 0) >= p.max_uses) return false;
 
+      // Event-gated promos are only live inside one of their campaign windows.
+      if (p.category === "single_event" || p.category === "multiple_event") {
+        const live = (p.events || []).some((e) => {
+          const start = new Date(e.start_date).getTime();
+          const end = new Date(e.end_date).getTime();
+          return now >= start && now <= end;
+        });
+        if (!live) return false;
+      }
+
       if (Array.isArray(p.applicable_items) && p.applicable_items.length > 0 && cartItemSlugs) {
         const applicable = p.applicable_items.map((s) => String(s).toLowerCase());
         const matches = cartItemSlugs.some((s) => applicable.includes(String(s).toLowerCase()));

@@ -70,12 +70,23 @@ export interface Offer {
   title: string;
   subtitle: string;
   description: string;
+  termsConditions?: string | null;
   discountType: 'percentage' | 'fixed' | 'free_item';
   discountValue: number;
+  maxDiscountAmount?: number | null;
   freeItemName?: string;
   minOrderValue: number;
+  maxOrderValue?: number | null;
+  discountOn: 'amount' | 'quantity';
+  minQuantity?: number | null;
+  maxQuantity?: number | null;
+  customerType: 'all' | 'new' | 'returning';
+  validFrom?: string | null;
+  validUntil?: string | null;
+  applicableItems?: string[] | null;
   badge?: string;
   active: boolean;
+  firstOrderOnly?: boolean;
 }
 
 export interface CartItemExtra {
@@ -90,6 +101,7 @@ export interface CartItem {
   productSlug: string;
   productImage: string;
   isCombo?: boolean;
+  isFree?: boolean;
   size: ProductSize;
   quantity: number;
   extras: CartItemExtra[];
@@ -139,6 +151,8 @@ export interface Order {
   items: CartItem[];
   subtotal: number;
   discount: number;
+  discountType?: "fixed" | "percentage" | "free_item" | "free_delivery";
+  freeItemName?: string;
   appliedCoupon?: string;
   deliveryFee: number;
   tax: number;

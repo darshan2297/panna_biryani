@@ -19,6 +19,7 @@ export async function forwardOrderToCrm(order: Order): Promise<string | null> {
     portion_size: it.size?.label || it.size?.id || "500g",
     quantity: it.quantity,
     unit_price: Math.round((it.totalPrice / Math.max(1, it.quantity)) * 100) / 100,
+    is_free: it.isFree === true,
     notes: (it.extras || [])
       .map((e) => `${e.quantity}x ${e.extra.name}`)
       .join(", ") || null,
@@ -40,6 +41,8 @@ export async function forwardOrderToCrm(order: Order): Promise<string | null> {
     payment_method: toCrmPaymentMethod(order.paymentMethod),
     delivery_fee: order.deliveryFee,
     discount: order.discount,
+    discount_type: order.discountType || null,
+    free_item_name: order.freeItemName || null,
     tax: order.tax,
     notes: order.specialInstructions || null,
   };
