@@ -6,6 +6,13 @@ import { Phone, Mail, MapPin, Clock } from "lucide-react";
 import { siteConfig } from "@/data/siteConfig";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
 
+const policyLinks = [
+  { label: "Privacy Policy", href: "/privacy-policy" },
+  { label: "Terms & Conditions", href: "/terms" },
+  { label: "Refund Policy", href: "/refund-policy" },
+  { label: "Shipping & Delivery Policy", href: "/shipping-delivery-policy" },
+];
+
 export function Footer() {
   useStorefrontStore((s) => s.config);
   const currentYear = new Date().getFullYear();
@@ -87,13 +94,13 @@ export function Footer() {
                 <li className="flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5 text-[#E8B94A] shrink-0" />
                   <a href={`tel:${siteConfig.contact.phone}`} className="hover:text-white truncate">
-                    +91 98765 43210
+                    {siteConfig.contact.phoneDisplay}
                   </a>
                 </li>
                 <li className="flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5 text-[#E8B94A] shrink-0" />
                   <a href={`mailto:${siteConfig.contact.email}`} className="hover:text-white truncate">
-                    hello@pannabiryani.in
+                    {siteConfig.contact.email}
                   </a>
                 </li>
                 <li className="flex items-center gap-1.5">
@@ -183,7 +190,7 @@ export function Footer() {
                   href={`tel:${siteConfig.contact.phone}`}
                   className="hover:text-white transition-colors"
                 >
-                  +91 98765 43210
+                  {siteConfig.contact.phoneDisplay}
                 </a>
               </li>
               <li className="flex items-center gap-2">
@@ -192,7 +199,7 @@ export function Footer() {
                   href={`mailto:${siteConfig.contact.email}`}
                   className="hover:text-white transition-colors"
                 >
-                  hello@pannabiryani.in
+                  {siteConfig.contact.email}
                 </a>
               </li>
               <li className="flex items-center gap-2">
@@ -251,6 +258,21 @@ export function Footer() {
               <p className="text-zinc-500 text-[10px] sm:text-[10.5px] leading-tight mt-0.5">Direct • Pickup • Delivery</p>
             </div>
           </div>
+        </div>
+
+        {/* Policies Bar */}
+        <div className="border-t border-white/15 py-3.5">
+          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[11px] sm:text-[12px] text-white/75 leading-none">
+            {policyLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="whitespace-nowrap hover:text-[#E8B94A] transition-colors"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
         {/* Bottom Copyright Bar */}

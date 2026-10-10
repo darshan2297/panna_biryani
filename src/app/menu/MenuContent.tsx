@@ -31,12 +31,22 @@ export function MenuContent() {
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
+  // Derive product categories from the API products instead of hardcoding
+  const productCategories = useMemo(() => {
+    const cats: { id: string; label: string }[] = [];
+    const seen = new Set<string>();
+    for (const p of products) {
+      if (!seen.has(p.category)) {
+        seen.add(p.category);
+        cats.push({ id: p.category, label: p.categoryLabel });
+      }
+    }
+    return cats;
+  }, [products]);
+
   const categories = [
     { id: "all", label: "Full Menu" },
-    { id: "veg-dum", label: "Veg Dum" },
-    { id: "paneer", label: "Paneer Dum" },
-    { id: "hyderabadi", label: "Hyderabadi" },
-    { id: "royal", label: "Royal Dum" },
+    ...productCategories,
     { id: "combos", label: "Combos & Packs" },
     { id: "extras", label: "Extras & Sides" },
   ];
@@ -135,10 +145,7 @@ export function MenuContent() {
 
         {/* Section 1: Signature Biryanis */}
         {(selectedCategory === "all" ||
-          selectedCategory === "veg-dum" ||
-          selectedCategory === "paneer" ||
-          selectedCategory === "hyderabadi" ||
-          selectedCategory === "royal") && (
+          productCategories.some((c) => c.id === selectedCategory)) && (
           <div className="mb-14">
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-serif text-2xl font-black text-panna-deep flex items-center gap-2">

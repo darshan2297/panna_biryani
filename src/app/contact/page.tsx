@@ -1,6 +1,6 @@
 import { Metadata } from "next";
 import { siteConfig } from "@/data/siteConfig";
-import { fetchStorefrontConfig } from "@/services/storefront/configService";
+import { fetchStorefrontConfig, fetchDeliveryAreas } from "@/services/storefront/configService";
 import { Phone, Mail, MapPin, Clock } from "lucide-react";
 import { ContactForm } from "./ContactForm";
 
@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 
 export default async function ContactPage() {
   const config = await fetchStorefrontConfig();
+  const deliveryAreas = await fetchDeliveryAreas();
   const pickup = {
     name: siteConfig.pickupLocation.name,
     address: config?.address_line || siteConfig.pickupLocation.address,
@@ -125,8 +126,9 @@ export default async function ContactPage() {
               </span>
               <h3 className="font-serif text-lg font-bold text-white">Serving Surat Neighborhoods</h3>
               <p className="text-xs text-zinc-300 leading-relaxed">
-                Vesu, VIP Road, City Light, Piplod, Althan, Ghod Dod Road, Athwa Lines, Adajan, Pal,
-                Nanpura, Rander, Varachha, and Katargam.
+                {deliveryAreas && deliveryAreas.length > 0
+                  ? deliveryAreas.map((a) => a.name).join(", ")
+                  : "Vesu, VIP Road, City Light, Piplod, Althan, Ghod Dod Road, Athwa Lines, Adajan, Pal, Nanpura, Rander, Varachha, and Katargam."}
               </p>
             </div>
           </div>
