@@ -7,6 +7,8 @@ import { Order, OrderStatus } from "@/types";
 import { formatINR, cn } from "@/lib/utils";
 import { siteConfig } from "@/data/siteConfig";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
+import { resolveImageUrl } from "@/services/storefront/configService";
+import { downloadStoreInvoice, printStoreInvoice } from "@/lib/invoice";
 import { useCartStore } from "@/store/useCartStore";
 import { useShopGate } from "@/components/shop/useShopGate";
 import { useUserSessionStore } from "@/store/useUserSessionStore";
@@ -21,6 +23,7 @@ import {
   Phone,
   Mail,
   Printer,
+  Download,
   RotateCcw,
   Calendar,
   CreditCard,
@@ -42,6 +45,7 @@ const CRM_API_BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/ap
 export function OrderDetailClient({
   orderId, initialOrder }: OrderDetailClientProps) {
   const products = useStorefrontStore((st) => st.products);
+  const config = useStorefrontStore((st) => st.config);
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [order, setOrder] = useState<Order | null>(initialOrder);
@@ -232,6 +236,16 @@ export function OrderDetailClient({
 
   const statusInfo = getStatusInfo(order.orderStatus);
 
+  // GST is reverse-calculated out of the tax-inclusive menu prices for the invoice.
+  const invoiceGstPct = Number(config?.gst_percent ?? 5) || 0;
+  const invoiceGstBase = Math.max(0, (order?.subtotal ?? 0) - (order?.discount ?? 0));
+  const invoiceGst =
+    order?.tax != null
+      ? Number(order.tax)
+      : invoiceGstPct > 0
+        ? Number((invoiceGstBase - invoiceGstBase / (1 + invoiceGstPct / 100)).toFixed(2))
+        : 0;
+
   // 1-Click Reorder handler
   const handleReorder = () => {
     if (!guard()) return;
@@ -253,8 +267,63 @@ export function OrderDetailClient({
     }
   };
 
+  const storeInvoiceData = () => {
+    if (!order) return null;
+    return {
+      invoiceNumber: `INV-${order.crmOrderNumber || order.orderNumber}`,
+      orderNumber: order.orderNumber,
+      crmOrderNumber: order.crmOrderNumber ?? null,
+      date: order.createdAt,
+      orderType: order.orderType === "delivery" ? "Delivery" : "Pickup",
+      paymentStatus: String(order.paymentStatus ?? "").toUpperCase(),
+      businessName: config?.brand_name ?? "Panna Biryani",
+      tagline: config?.brand_tagline ?? null,
+      logoUrl: config?.logo_url ? resolveImageUrl(config.logo_url) : null,
+      address: config?.address_line ?? null,
+      city: config?.city ?? config?.area ?? null,
+      pincode: config?.pincode ?? null,
+      phone: config?.phone ?? null,
+      email: config?.email ?? null,
+      gstNumber: config?.gst_number ?? null,
+      customerName: order.customerName,
+      customerPhone: order.phone,
+      customerAddress: order.deliveryAddress
+        ? [
+            order.deliveryAddress.streetAddress,
+            order.deliveryAddress.area,
+            order.deliveryAddress.city,
+            order.deliveryAddress.pincode,
+          ]
+            .filter(Boolean)
+            .join(", ")
+        : "Kitchen pickup",
+      subtotal: order.subtotal,
+      discount: order.discount,
+      discountLabel: order.appliedCoupon ?? null,
+      deliveryFee: order.deliveryFee,
+      total: order.total,
+      gstPercent: invoiceGstPct,
+      gstAmount: invoiceGst,
+      paymentId: order.razorpayPaymentId ?? null,
+      items: order.items.map((it) => ({
+        name: it.productName,
+        portion: it.size?.label ?? it.size?.id ?? null,
+        quantity: it.quantity,
+        unitPrice: it.totalPrice / Math.max(1, it.quantity),
+        totalPrice: it.totalPrice,
+        free: it.isFree,
+      })),
+    };
+  };
+
   const handlePrint = () => {
-    window.print();
+    const data = storeInvoiceData();
+    if (data) printStoreInvoice(data);
+  };
+
+  const handleDownload = () => {
+    const data = storeInvoiceData();
+    if (data) downloadStoreInvoice(data);
   };
 
   return (
@@ -281,6 +350,16 @@ export function OrderDetailClient({
               <span>Print Invoice</span>
             </button>
 
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-[#00241b] hover:bg-[#007A55] px-3.5 py-2 rounded-xl transition-colors cursor-pointer shadow-2xs"
+              title="Download a copy of your tax invoice"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Invoice</span>
+            </button>
+
             <Link
               href={`/track-order/${order.id}`}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-[#E8B94A] bg-[#00241b] hover:bg-[#00382b] px-4 py-2 rounded-xl transition-all shadow-xs"
@@ -302,26 +381,63 @@ export function OrderDetailClient({
 
         {/* Main Invoice Card */}
         <div className="bg-white rounded-3xl border border-[#E3DACB] p-6 sm:p-9 shadow-xs space-y-8 print:border-none print:shadow-none print:p-0">
-          {/* Header Branding & Order ID */}
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 pb-6 border-b border-[#E3DACB]">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#E8B94A]" />
-                <span className="text-[11px] font-bold uppercase tracking-widest text-[#007A55]">
-                  Authentic Surat Dum Biryani
-                </span>
-              </div>
+          {/* Standard Tax-Invoice Header: seller identity + logo + GSTIN + invoice meta */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 pb-6 border-b-2 border-[#00241b]">
+            <div className="space-y-2">
+              {config?.logo_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={resolveImageUrl(config.logo_url)}
+                  alt={config.brand_name || "Panna Biryani"}
+                  className="max-w-[150px] max-h-14 object-contain"
+                />
+              )}
               <h1 className="font-serif text-2xl sm:text-3xl font-black text-[#00241b]">
-                Invoice #{order.orderNumber}
+                {config?.brand_name || "Panna Biryani"}
               </h1>
-              <p className="text-xs text-zinc-500 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Placed on {formatDate(order.createdAt)}</span>
-              </p>
+              {config?.brand_tagline && (
+                <p className="text-xs text-zinc-500">{config.brand_tagline}</p>
+              )}
+              <div className="text-[11px] text-zinc-600 leading-relaxed">
+                {config?.address_line && <div>{config.address_line}</div>}
+                {(config?.city || config?.pincode) && (
+                  <div>
+                    {[config?.city, config?.pincode].filter(Boolean).join(" - ")}
+                  </div>
+                )}
+                {config?.phone && <div>Phone: {config.phone}</div>}
+                {config?.email && <div>Email: {config.email}</div>}
+              </div>
+              {config?.gst_number && (
+                <div className="inline-block border border-[#00241b] px-2 py-1 text-[11px] font-bold text-[#00241b] mt-1">
+                  GSTIN: {config.gst_number}
+                </div>
+              )}
             </div>
 
-            {/* Status Badge */}
-            <div className="flex flex-col sm:items-end gap-1.5">
+            {/* Invoice meta */}
+            <div className="flex flex-col sm:items-end gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                Tax Invoice
+              </span>
+              <h2 className="font-serif text-lg font-black text-[#00241b]">
+                Invoice #{order.orderNumber}
+              </h2>
+              <p className="text-[11px] text-zinc-600 leading-relaxed sm:text-right">
+                <span className="block">
+                  <strong>Order No:</strong> {order.crmOrderNumber || order.orderNumber}
+                </span>
+                <span className="block">
+                  <Calendar className="w-3 h-3 inline mr-1 text-zinc-400" />
+                  {formatDate(order.createdAt)}
+                </span>
+                <span className="block">
+                  <strong>Type:</strong>{" "}
+                  {order.orderType === "delivery" ? "Delivery" : "Pickup"}
+                </span>
+              </p>
+
+              {/* Status Badge */}
               <div
                 className={cn(
                   "inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold border",
@@ -331,9 +447,49 @@ export function OrderDetailClient({
                 <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
                 <span>{statusInfo.label}</span>
               </div>
-              <span className="text-[11px] text-zinc-500 font-medium">
-                {order.orderType === "delivery" ? "Doorstep Delivery" : "Kitchen Counter Pickup"}
-              </span>
+            </div>
+          </div>
+
+          {/* Sold By / Billed To */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="border border-[#E3DACB] rounded-xl p-3">
+              <h3 className="text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500 mb-1.5">
+                Sold By
+              </h3>
+              <p className="text-[11px] text-zinc-700 leading-relaxed">
+                <strong className="text-[#00241b]">{config?.brand_name || "Panna Biryani"}</strong>
+                <br />
+                {config?.address_line}
+                <br />
+                {[config?.city, config?.pincode].filter(Boolean).join(" - ")}
+                <br />
+                {config?.phone && <>Phone: {config.phone}<br /></>}
+                {config?.gst_number && (
+                  <>
+                    <strong>GSTIN:</strong> {config.gst_number}
+                  </>
+                )}
+              </p>
+            </div>
+            <div className="border border-[#E3DACB] rounded-xl p-3">
+              <h3 className="text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500 mb-1.5">
+                Billed To
+              </h3>
+              <p className="text-[11px] text-zinc-700 leading-relaxed">
+                <strong className="text-[#00241b]">{order.customerName}</strong>
+                <br />
+                {order.phone}
+                <br />
+                {order.deliveryAddress ? (
+                  <>
+                    {order.deliveryAddress.streetAddress}, {order.deliveryAddress.area}
+                    <br />
+                    {order.deliveryAddress.city} - {order.deliveryAddress.pincode}
+                  </>
+                ) : (
+                  "Kitchen pickup"
+                )}
+              </p>
             </div>
           </div>
 
@@ -593,8 +749,28 @@ export function OrderDetailClient({
                 <span className="font-serif text-[#007A55]">{formatINR(order.total)}</span>
               </div>
 
+              <div className="space-y-1 pt-2 border-t border-[#E3DACB] text-[10.5px] text-zinc-500">
+                <div className="flex justify-between">
+                  <span>Taxable value (incl. GST)</span>
+                  <span>{formatINR(Math.max(0, order.subtotal - (order.discount || 0)))}</span>
+                </div>
+                {invoiceGst > 0 && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>CGST @ {(invoiceGstPct / 2).toFixed(2)}%</span>
+                      <span>{formatINR(invoiceGst / 2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>SGST @ {(invoiceGstPct / 2).toFixed(2)}%</span>
+                      <span>{formatINR(invoiceGst / 2)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
               <p className="text-[10px] text-zinc-400 text-right pt-0.5">
-                (Taxes & kitchen packing charges included)
+                All prices are inclusive of GST
+                {config?.gst_number ? ` · GSTIN ${config.gst_number}` : ""}
               </p>
             </div>
           </div>
