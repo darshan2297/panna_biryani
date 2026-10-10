@@ -1,18 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bike, ShoppingBag, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCartStore } from "@/store/useCartStore";
 import { useStorefrontStore, getStorefrontImage } from "@/store/useStorefrontStore";
+import {
+  fetchOrderTypeStats,
+  type OrderTypeStats,
+} from "@/services/storefront/configService";
 
 export function HowWouldYouLikeToOrderSection() {
   const { setOrderType } = useCartStore();
   const config = useStorefrontStore((s) => s.config);
   const loaded = useStorefrontStore((s) => s.loaded);
   const [selectedType, setSelectedType] = useState<"delivery" | "pickup">("pickup");
+
+  // Real fulfilment preference, computed from actual orders in the CRM.
+  // `null` / has_data=false => we show no percentages at all rather than
+  // inventing them.
+  const [stats, setStats] = useState<OrderTypeStats | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchOrderTypeStats()
+      .then((s) => {
+        if (alive) setStats(s);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const showPreference = Boolean(stats?.has_data);
+  const deliveryPct = stats?.delivery_pct ?? 0;
+  const pickupPct = stats?.pickup_pct ?? 0;
+  // "Most popular" badge follows the real majority instead of being hardcoded.
+  const mostPopular: "delivery" | "pickup" | null = !showPreference
+    ? null
+    : pickupPct >= deliveryPct
+      ? "pickup"
+      : "delivery";
 
   // Default to showing both options while loading or when config is unavailable
   const deliveryEnabled = config ? config.delivery_enabled : true;
@@ -47,28 +78,42 @@ export function HowWouldYouLikeToOrderSection() {
                     toast.success("Delivery selected. Fast doorstep delivery.");
                   }}
                   className={cn(
-                    "rounded-lg p-3 text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-white border",
+                    "relative rounded-lg p-3 text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition-all bg-white border",
                     selectedType === "delivery"
                       ? "border-2 border-[#003F32] shadow-xs"
                       : "border-[#E0D5C3] hover:border-[#003F32]/50"
                   )}
                 >
+                  {/* Most Popular badge — only when real data shows delivery ahead */}
+                  {mostPopular === "delivery" && (
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#003F32] text-white text-[9.5px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                      ⭐ Most Popular
+                    </span>
+                  )}
+
                   <Bike className="w-6 h-6 text-[#003F32] stroke-[1.75]" />
                   <div className="space-y-0.5 w-full">
                     <h4 className="font-bold text-[13px] text-[#17332C]">Delivery</h4>
                     <p className="text-[11px] text-[#556963] leading-tight">Fast &amp; Safe Delivery</p>
                     <p className="text-[10.5px] text-[#888]">₹{deliveryFee} (extra)</p>
                   </div>
-                  {/* Preference bar */}
-                  <div className="w-full space-y-1 pt-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-[#888]">Users prefer</span>
-                      <span className="text-[11px] font-bold text-[#556963]">32%</span>
+                  {/* Preference bar — real data only */}
+                  {showPreference && (
+                    <div className="w-full space-y-1 pt-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-[#888]">Users prefer</span>
+                        <span className="text-[11px] font-bold text-[#556963]">
+                          {deliveryPct}%
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#EEE8DC] rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[#003F32]/40 transition-all duration-500"
+                          style={{ width: `${deliveryPct}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full h-1.5 bg-[#EEE8DC] rounded-full overflow-hidden">
-                      <div className="h-full w-[32%] bg-[#003F32]/40 rounded-full" />
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 )}
@@ -87,10 +132,12 @@ export function HowWouldYouLikeToOrderSection() {
                       : "border-[#E0D5C3] hover:border-[#003F32]/50"
                   )}
                 >
-                  {/* Most Popular badge */}
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#003F32] text-white text-[9.5px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap">
-                    ⭐ Most Popular
-                  </span>
+                  {/* Most Popular badge — only when real data shows pickup ahead */}
+                  {mostPopular === "pickup" && (
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#003F32] text-white text-[9.5px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                      ⭐ Most Popular
+                    </span>
+                  )}
 
                   <ShoppingBag className="w-6 h-6 text-[#003F32] stroke-[1.75]" />
                   <div className="space-y-0.5 w-full">
@@ -98,16 +145,23 @@ export function HowWouldYouLikeToOrderSection() {
                     <p className="text-[11px] text-[#556963] leading-tight">No Extra Charge</p>
                     <p className="text-[10.5px] text-[#003F32] font-semibold">100% Free</p>
                   </div>
-                  {/* Preference bar */}
-                  <div className="w-full space-y-1 pt-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-[#888]">Users prefer</span>
-                      <span className="text-[11px] font-bold text-[#003F32]">68%</span>
+                  {/* Preference bar — real data only */}
+                  {showPreference && (
+                    <div className="w-full space-y-1 pt-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-[#888]">Users prefer</span>
+                        <span className="text-[11px] font-bold text-[#003F32]">
+                          {pickupPct}%
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-[#EEE8DC] rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[#003F32] transition-all duration-500"
+                          style={{ width: `${pickupPct}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full h-1.5 bg-[#EEE8DC] rounded-full overflow-hidden">
-                      <div className="h-full w-[68%] bg-[#003F32] rounded-full" />
-                    </div>
-                  </div>
+                  )}
                 </div>
                 )}
 
