@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createOrder } from "@/services/orders/orderService";
-import { activePaymentProvider } from "@/services/payments/paymentProvider";
+import { createBackendPaymentSession } from "@/services/payments/backendPaymentService";
 import { getWebsiteShopOpen } from "@/services/shopStatus";
 import { hydrateServerStorefront } from "@/services/storefront/serverConfig";
 
@@ -84,8 +84,19 @@ export async function POST(req: NextRequest) {
       paymentMethod: validatedData.paymentMethod,
     });
 
-    // Initiate payment session through abstracted payment provider
-    const paymentSession = await activePaymentProvider.createPayment(newOrder);
+    // For online payments, initiate the payment session through the CRM
+    // backend (the Razorpay secret lives there, never in the storefront).
+    // COD / pickup orders skip payment initiation entirely.
+    let paymentSession: unknown = null;
+    if (validatedData.paymentMethod === "online") {
+      paymentSession = await createBackendPaymentSession({
+        id: newOrder.id,
+        crmOrderNumber: newOrder.crmOrderNumber,
+        total: newOrder.total,
+        customerName: newOrder.customerName,
+        phone: newOrder.phone,
+      });
+    }
 
     return NextResponse.json({
       success: true,
