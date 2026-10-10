@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/useCartStore";
 import { useShopGate } from "@/components/shop/useShopGate";
 import { siteConfig } from "@/data/siteConfig";
-import { useStorefrontStore } from "@/store/useStorefrontStore";
+import { useStorefrontStore, computeGrandTotal } from "@/store/useStorefrontStore";
 import { formatINR, cn } from "@/lib/utils";
 import {
   Store,
@@ -24,6 +24,7 @@ import { CouponMessage } from "@/components/cart/CouponMessage";
 import { trackEvent } from "@/services/analytics/analyticsService";
 import { useUserSessionStore } from "@/store/useUserSessionStore";
 import { isPlaceholderName } from "@/lib/phoneSession";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 
 export function CheckoutForm() {
   const storefrontMethods = useStorefrontStore((st) => st.paymentMethods);
@@ -87,7 +88,10 @@ export function CheckoutForm() {
   const subtotal = getSubtotal();
   const deliveryFee = getDeliveryFee();
   const discount = getDiscount();
-  const total = getTotal();
+  // Menu prices are the final all-inclusive price (GST + gateway fee + VAS are all
+  // inside it), so the customer pays the cart total as-is — nothing is added on top.
+  const baseTotal = getTotal();
+  const { grandTotal: total } = computeGrandTotal(baseTotal);
 
   // If cart is empty, prompt user to go to menu
   if (!items || items.length === 0) {
@@ -212,23 +216,64 @@ export function CheckoutForm() {
       }
 
       const order = data.order;
-      const paymentSession = data.paymentSession;
+      const paymentSession = data.paymentSession || {};
 
       // 2. Handle Payment Verification
       if (paymentMethod === "online") {
-        // Verify payment session with backend
-        const verifyRes = await fetch("/api/orders/verify-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderId: order.id,
-            transactionToken: paymentSession.transactionToken,
-          }),
-        });
+        const isRealGateway =
+          paymentSession.gateway === "RAZORPAY" &&
+          paymentSession.keyId &&
+          paymentSession.razorpayOrderId;
 
-        const verifyData = await verifyRes.json();
-        if (!verifyData.success) {
-          throw new Error(verifyData.error || "Payment verification failed");
+        if (isRealGateway) {
+          // Open the Razorpay Checkout modal using the server-created order.
+          const result = await openRazorpayCheckout({
+            keyId: paymentSession.keyId,
+            amount: paymentSession.amount,
+            currency: paymentSession.currency || "INR",
+            name: "Panna Biryani",
+            description: `Order ${order.orderNumber || order.id}`,
+            orderId: paymentSession.razorpayOrderId,
+            prefillName: order.customerName,
+            prefillContact: order.phone,
+          });
+
+          // Verify the Razorpay signature with the backend.
+          const verifyRes = await fetch("/api/orders/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: order.id,
+              orderNumber: order.crmOrderNumber || order.id,
+              razorpayOrderId: result.razorpay_order_id,
+              razorpayPaymentId: result.razorpay_payment_id,
+              razorpaySignature: result.razorpay_signature,
+            }),
+          });
+
+          const verifyData = await verifyRes.json();
+          if (!verifyData.success) {
+            throw new Error(verifyData.error || "Payment verification failed");
+          }
+        } else {
+          // Test/mock mode (no gateway configured): confirm the order directly.
+          const verifyRes = await fetch("/api/orders/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: order.id,
+              orderNumber: order.crmOrderNumber || order.id,
+              razorpayOrderId:
+                paymentSession.transactionToken || `rzp_order_${Date.now()}`,
+              razorpayPaymentId: `pay_mock_${Date.now()}`,
+              razorpaySignature: `mock_signature_${Date.now()}`,
+            }),
+          });
+
+          const verifyData = await verifyRes.json();
+          if (!verifyData.success) {
+            throw new Error(verifyData.error || "Payment verification failed");
+          }
         }
       }
 
@@ -398,7 +443,9 @@ export function CheckoutForm() {
                       <span className="text-[11px] font-bold text-panna-gold-dark block mt-1">
                         {subtotal >= siteConfig.pricingRules.freeDeliveryThreshold
                           ? "FREE Delivery"
-                          : "₹30 - ₹69 depending on area"}
+                          : deliveryAreas.length > 0
+                            ? `₹${Math.min(...deliveryAreas.map((a) => a.delivery_fee))} - ₹${Math.max(...deliveryAreas.map((a) => a.delivery_fee))} depending on area`
+                            : "Delivery fee varies by area"}
                       </span>
                     </div>
                   </button>
@@ -717,6 +764,8 @@ export function CheckoutForm() {
                       {deliveryFee === 0 ? "FREE" : formatINR(deliveryFee)}
                     </span>
                   </div>
+
+                  {/* Fees are already inside the menu price (tax-inclusive) — not shown separately */}
 
                   <div className="pt-3 border-t border-dashed border-panna-border flex items-center justify-between text-base font-bold text-panna-deep">
                     <span>Total Amount</span>

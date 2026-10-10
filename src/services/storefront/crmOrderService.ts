@@ -7,13 +7,23 @@ function toCrmPaymentMethod(pm: string): string {
   return "COD";
 }
 
+/** Authoritative result returned by the CRM for a forwarded order. */
+export interface CrmOrderResult {
+  orderNumber: string;
+  totalAmount: number;
+  transactionFee: number;
+  vasFee: number;
+  tax: number;
+}
+
 /**
  * Forward a newly created website order to the CRM so it appears in the
  * orders dashboard. Failures are logged but never block customer ordering.
- * Returns the CRM-side order number (e.g. PB-W-20261005-1064) when the
- * order was accepted, or null when the CRM could not be reached.
+ * Returns the CRM-side order number and the CRM's authoritative totals
+ * (which include the online-payment transaction fee, GST and VAS charge),
+ * or null when the CRM could not be reached.
  */
-export async function forwardOrderToCrm(order: Order): Promise<string | null> {
+export async function forwardOrderToCrm(order: Order): Promise<CrmOrderResult | null> {
   const items = order.items.map((it) => ({
     item_name: it.productName,
     portion_size: it.size?.label || it.size?.id || "500g",
@@ -39,6 +49,7 @@ export async function forwardOrderToCrm(order: Order): Promise<string | null> {
     },
     items,
     payment_method: toCrmPaymentMethod(order.paymentMethod),
+    order_type: order.orderType === "pickup" ? "PICKUP" : "DELIVERY",
     delivery_fee: order.deliveryFee,
     discount: order.discount,
     discount_type: order.discountType || null,
@@ -61,9 +72,20 @@ export async function forwardOrderToCrm(order: Order): Promise<string | null> {
         console.error(`[crmOrder] Failed to forward order to CRM (${res.status}): ${text}`);
       } else {
         const json = await res.json().catch(() => null);
-        const crmOrderNumber = json?.data?.order_number;
+        const data = json?.data;
+        const crmOrderNumber = data?.order_number;
         console.info(`[crmOrder] Order forwarded to CRM: ${crmOrderNumber || "ok"}`);
-        return crmOrderNumber ?? null;
+        if (!crmOrderNumber) return null;
+        // The CRM recomputes the grand total (adding the online-payment
+        // transaction fee, GST and the flat VAS charge). Return those
+        // authoritative figures so the caller charges the exact amount.
+        return {
+          orderNumber: crmOrderNumber,
+          totalAmount: Number(data?.total_amount ?? order.total),
+          transactionFee: Number(data?.transaction_fee ?? 0),
+          vasFee: Number(data?.vas_fee ?? 0),
+          tax: Number(data?.tax ?? order.tax),
+        };
       }
     } catch (err) {
       console.error(`[crmOrder] Error forwarding order to CRM (attempt ${attempt}):`, err);

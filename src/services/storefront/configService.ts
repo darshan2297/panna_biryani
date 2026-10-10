@@ -26,6 +26,10 @@ export interface StorefrontConfig {
   whatsapp: string | null;
   email: string | null;
   operating_hours: string | null;
+  transaction_fee_percent: number;
+  gst_percent: number;
+  gst_number: string | null;
+  vas_fee: number;
 }
 
 export interface PaymentMethodInfo {
@@ -128,6 +132,20 @@ async function get<T>(path: string): Promise<T | null> {
 
 export async function fetchStorefrontConfig(): Promise<StorefrontConfig | null> {
   return get<StorefrontConfig>("/public/config");
+}
+
+/** Real delivery-vs-pickup preference split, computed from actual orders. */
+export interface OrderTypeStats {
+  delivery_count: number;
+  pickup_count: number;
+  total_orders: number;
+  delivery_pct: number;
+  pickup_pct: number;
+  has_data: boolean;
+}
+
+export async function fetchOrderTypeStats(): Promise<OrderTypeStats | null> {
+  return get<OrderTypeStats>("/public/order-type-stats");
 }
 
 export async function fetchPaymentMethods(): Promise<PaymentMethodInfo[] | null> {

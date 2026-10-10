@@ -29,7 +29,7 @@ function WhatsAppIcon({ className }: { className?: string }) {
 export function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("redirect") || "/profile";
+  const redirectUrl = searchParams.get("redirect") || "/";
 
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<1 | 2>(1); // Step 1: Phone, Step 2: WhatsApp OTP Code
@@ -93,7 +93,7 @@ export function LoginClient() {
       }
 
       toast.success(
-        `WhatsApp verification code sent to +91 ${cleanPhone}! (Code: 123456) 📱`,
+        `WhatsApp verification code sent to +91 ${cleanPhone}!`,
         { duration: 5000 }
       );
       setStep(2);
@@ -147,8 +147,10 @@ export function LoginClient() {
         colors: ["#25D366", "#E8B94A", "#00241b"],
       });
 
-      // Save user session
-      startSession(data.user);
+      // Save user session — mark it OTP-verified so the
+      // customer can apply promo codes (which require a
+      // WhatsApp OTP login).
+      startSession({ ...data.user, otpVerified: true });
       if (Array.isArray(data.orders)) {
         setOrders(data.orders);
       }
@@ -161,12 +163,6 @@ export function LoginClient() {
     } finally {
       setIsVerifying(false);
     }
-  };
-
-  // Quick 1-click test fill
-  const handleAutoFillDemoCode = () => {
-    setOtpCode("123456");
-    toast.info("Auto-filled test code: 123456");
   };
 
   return (
@@ -262,20 +258,6 @@ export function LoginClient() {
               )}
             </button>
 
-            {/* Quick Demo Helper */}
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 space-y-1">
-              <p className="font-bold flex items-center gap-1.5 text-[11.5px]">
-                <Sparkles className="w-3.5 h-3.5 text-[#007A55]" />
-                <span>Instant Demo Login Enabled</span>
-              </p>
-              <p className="text-[11px] text-emerald-800">
-                You can use any 10-digit mobile number (e.g. <code>9876543210</code>). Temporary verification code is{" "}
-                <strong className="font-mono bg-white px-1.5 py-0.5 rounded border border-emerald-300">
-                  123456
-                </strong>
-                .
-              </p>
-            </div>
           </form>
         )}
 
@@ -299,23 +281,6 @@ export function LoginClient() {
                 className="text-[#007A55] hover:text-[#00553b] font-bold text-[11px] hover:underline cursor-pointer"
               >
                 Change Number
-              </button>
-            </div>
-
-            {/* Test Code Callout with 1-Click Auto-Fill */}
-            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 text-xs flex items-center justify-between gap-2">
-              <div>
-                <p className="font-bold text-amber-900 text-[11.5px]">
-                  WhatsApp Code: <code className="font-mono text-sm font-black">123456</code>
-                </p>
-                <p className="text-[10.5px] text-amber-700">Set as temporary active code</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAutoFillDemoCode}
-                className="px-2.5 py-1 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-900 font-bold text-[11px] transition-colors cursor-pointer shrink-0"
-              >
-                Auto-fill Code
               </button>
             </div>
 

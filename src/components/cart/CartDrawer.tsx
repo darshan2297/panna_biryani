@@ -26,7 +26,6 @@ import { toast } from "sonner";
 import { CouponPhonePrompt } from "@/components/cart/CouponPhonePrompt";
 import { CouponMessage } from "@/components/cart/CouponMessage";
 import { checkAppliedCoupon } from "@/lib/couponCheck";
-import { lookupPhone, startSessionForPhone } from "@/lib/phoneSession";
 
 export function CartDrawer() {
   const extras = useStorefrontStore((st) => st.extras);
@@ -53,6 +52,7 @@ export function CartDrawer() {
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState("");
   const [phonePrompt, setPhonePrompt] = useState(false);
+  const [loginPrompt, setLoginPrompt] = useState(false);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const sessionUser = useUserSessionStore((s) => s.user);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -109,33 +109,26 @@ export function CartDrawer() {
   const effectiveTotal = couponBlocked ? Math.max(0, subtotal + deliveryFee) : total;
 
   const runApply = async (code: string, phone?: string) => {
-    // Reuse the profile phone when signed in so we don't re-ask.
+    // Promo codes require a WhatsApp OTP login — a plain phone
+    // number is not enough. If the customer hasn't verified via
+    // OTP, ask them to log in (they land on home after login).
+    const otpVerified = useUserSessionStore.getState().otpVerified;
+    if (!otpVerified) {
+      setPhonePrompt(false);
+      setSessionNotice(null);
+      setCouponError("");
+      setLoginPrompt(true);
+      return;
+    }
+
+    // Reuse the profile phone (from the OTP session) for promo checks.
     const profilePhone =
       sessionUser?.phone && sessionUser.phone.length >= 10 ? sessionUser.phone : undefined;
 
-    // A number typed into the promo prompt doubles as a sign-in. Establish the
-    // session BEFORE validating: a code can be legitimately refused (FIRSTPANNA
-    // for a returning customer) and the customer must still end up signed in.
-    if (phone && phone !== profilePhone) {
-      const lookup = await lookupPhone(phone);
-      if (lookup.ok) {
-        startSessionForPhone(phone, lookup.name);
-        setSessionNotice(
-          lookup.exists
-            ? `Signed in as +91 ${phone.slice(-10)}.`
-            : `Account created for +91 ${phone.slice(-10)}.`
-        );
-      }
-    }
-
     const res = await applyCoupon(code, phone ?? profilePhone);
     if (!res.success) {
-      if (res.requiresPhone) {
-        setPhonePrompt(true);
-        setCouponError("");
-        return;
-      }
       setPhonePrompt(false);
+      setLoginPrompt(false);
       setCouponError(res.message);
       // Clear the box so a refused code doesn't sit there looking half-applied.
       // The reason stays visible directly below it.
@@ -143,6 +136,7 @@ export function CartDrawer() {
       return;
     }
     setPhonePrompt(false);
+    setLoginPrompt(false);
     setCouponError("");
     toast.success(res.message);
     setCouponInput("");
@@ -569,6 +563,23 @@ export function CartDrawer() {
                     ) : (
                       couponError && <CouponMessage tone="error">{couponError}</CouponMessage>
                     )}
+                      {loginPrompt && (
+                        <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                          <p className="text-[11px] text-amber-900 font-semibold">
+                            Login with WhatsApp OTP to apply promo codes
+                          </p>
+                          <p className="text-[10px] text-amber-800/80">
+                            Promo codes are for verified customers only. Verify your mobile with a one-time WhatsApp code.
+                          </p>
+                          <Link
+                            href="/login"
+                            className="inline-flex items-center gap-1.5 bg-panna-forest hover:bg-panna-deep text-white font-bold text-[11px] px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Login with WhatsApp OTP
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        </div>
+                      )}
                     </form>
                   )}
 

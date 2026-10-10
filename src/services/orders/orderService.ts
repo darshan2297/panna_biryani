@@ -58,7 +58,18 @@ export interface OrderCalculationResult {
   estimatedDeliveryMinutes: number;
 }
 
-// In-memory order storage attached to globalThis for consistent state across Next.js server contexts
+/**
+ * EPHEMERAL IN-MEMORY ORDER STORE — KNOWN LIMITATION
+ *
+ * Orders are stored in a Map on globalThis for consistent state across Next.js
+ * server contexts. This store is VOLATILE: all orders are lost on server restart
+ * or serverless function cold-start. This is acceptable for the current phase
+ * because every order is also forwarded to the CRM via `forwardOrderToCrm`
+ * (see `createOrder`), which is the persistent system of record.
+ *
+ * If durable order history is needed in the future, replace this with a
+ * database-backed store (e.g. PostgreSQL, MongoDB) or query the CRM API.
+ */
 const globalOrdersStore = (globalThis as unknown as { _pannaOrdersStore?: Map<string, Order> });
 if (!globalOrdersStore._pannaOrdersStore) {
   globalOrdersStore._pannaOrdersStore = new Map<string, Order>();
@@ -335,10 +346,19 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   ordersStore.set(orderId, newOrder);
   ordersStore.set(orderNumber, newOrder);
 
-  // Forward to CRM so the order shows up in the CRM orders dashboard
-  const crmOrderNumber = await forwardOrderToCrm(newOrder);
-  if (crmOrderNumber) {
-    newOrder.crmOrderNumber = crmOrderNumber;
+  // Forward to CRM so the order shows up in the CRM orders dashboard.
+  // The CRM is the pricing authority: it adds the online-payment
+  // transaction fee, GST and the flat VAS notification charge on top
+  // of the base cart total. Adopt its authoritative totals so the
+  // amount the customer is charged (Razorpay) matches the order
+  // recorded in the CRM exactly.
+  const crmResult = await forwardOrderToCrm(newOrder);
+  if (crmResult) {
+    newOrder.crmOrderNumber = crmResult.orderNumber;
+    newOrder.total = crmResult.totalAmount;
+    newOrder.tax = crmResult.tax;
+    newOrder.transactionFee = crmResult.transactionFee;
+    newOrder.vasFee = crmResult.vasFee;
     ordersStore.set(orderId, newOrder);
     ordersStore.set(orderNumber, newOrder);
   }

@@ -117,6 +117,35 @@ export function getDeliverySettings() {
   };
 }
 
+/** Online-payment fee configuration sourced from the CRM. */
+export function getOnlineFeeConfig() {
+  const { config } = getStorefront();
+  return {
+    transactionFeePercent: config ? Number(config.transaction_fee_percent) || 0 : 0,
+    gstPercent: config ? Number(config.gst_percent) || 0 : 0,
+    vasFee: config ? Number(config.vas_fee) || 0 : 0,
+  };
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Grand total under the tax-inclusive (reverse-calculation) model.
+ *
+ * Menu prices are the FINAL all-inclusive price — GST, gateway fee and VAS are
+ * all already inside the dish price, so nothing is added on top. The customer
+ * pays the menu price + delivery only. This helper therefore returns the base
+ * cart total unchanged; fees are purely internal (CRM margin reporting).
+ */
+export function computeGrandTotal(baseTotal: number) {
+  return {
+    transactionFee: 0,
+    vasFee: 0,
+    charges: 0,
+    grandTotal: round2(baseTotal),
+  };
+}
+
 export function getBrandInfo() {
   const { config } = getStorefront();
   return {

@@ -15,10 +15,19 @@ export interface UserProfile {
 interface UserSessionState {
   user: UserProfile | null;
   orders: Order[]; // client-persisted order history
+  /** True only after a WhatsApp OTP login — required to apply promo codes. */
+  otpVerified: boolean;
 
   // Actions
   startSession: (
-    userData: { name: string; phone: string; email?: string; avatarUrl?: string; tag?: string },
+    userData: {
+      name: string;
+      phone: string;
+      email?: string;
+      avatarUrl?: string;
+      tag?: string;
+      otpVerified?: boolean;
+    },
     initialOrder?: Order
   ) => void;
   endSession: () => void;
@@ -33,6 +42,7 @@ export const useUserSessionStore = create<UserSessionState>()(
     (set, get) => ({
       user: null,
       orders: [],
+      otpVerified: false,
 
       startSession: (userData, initialOrder) => {
         const cleanPhone = userData.phone.replace(/\D/g, "").slice(-10);
@@ -57,15 +67,26 @@ export const useUserSessionStore = create<UserSessionState>()(
               currentOrders.unshift(initialOrder);
             }
           }
+          // OTP verification: an explicit OTP login always marks the
+          // session verified; switching to a different phone number
+          // without OTP resets it; resuming the same number keeps it.
+          const sameIdentity = state.user?.phone === cleanPhone;
+          const otpVerified =
+            userData.otpVerified === true
+              ? true
+              : sameIdentity
+                ? state.otpVerified
+                : false;
           return {
             user: newUser,
             orders: currentOrders,
+            otpVerified,
           };
         });
       },
 
       endSession: () => {
-        set({ user: null, orders: [] });
+        set({ user: null, orders: [], otpVerified: false });
       },
 
       addOrder: (order) => {

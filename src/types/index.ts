@@ -156,6 +156,8 @@ export interface Order {
   appliedCoupon?: string;
   deliveryFee: number;
   tax: number;
+  transactionFee?: number;
+  vasFee?: number;
   total: number;
   orderType: OrderType;
   deliveryAddress?: DeliveryAddress;
