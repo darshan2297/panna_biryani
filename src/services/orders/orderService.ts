@@ -1,6 +1,6 @@
 function currentMenu() {
   const srv = getServerStorefront();
-  const resolveImg = (url: string) => (url && url.startsWith("/media/") ? (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1.*$/, "") + url : url);
+  const resolveImg = resolveCrmMediaUrl;
   return {
     products: srv.menu && srv.menu.products ? srv.menu.products.map((p) => ({ ...p, image: resolveImg(p.image) })) : [],
     combos: srv.menu && srv.menu.combos ? srv.menu.combos.map((c) => ({ ...c, image: resolveImg(c.image) })) : [],
@@ -16,10 +16,12 @@ import {
   CartItem,
   Order,
   OrderStatus,
+  PaymentStatus,
   OrderType,
   PaymentMethod,
   DeliveryAddress,
 } from "@/types";
+import { CRM_API_BASE, resolveCrmMediaUrl } from "@/lib/crmConfig";
 import { generateOrderNumber } from "@/lib/utils";
 
 /** Display label for the complimentary promo gift line item. */
@@ -399,23 +401,147 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus): P
 }
 
 /**
- * Fetch all orders belonging to a customer's phone number (unique identifier)
+ * Fetch a customer's order history from the CRM.
+ *
+ * This used to read `ordersStore`, an in-memory Map populated only by orders
+ * placed since the server last started. A returning customer therefore saw an
+ * empty profile — zero orders, ₹0 spent — even with a decade of real orders in
+ * the CRM, which is where the CRM's own customer list disagreed with the
+ * website. The CRM is the system of record; the in-memory map is now only a
+ * fallback for orders placed in this process whose CRM write may still be in
+ * flight.
  */
 export async function getOrdersByPhone(phone: string): Promise<Order[]> {
   const cleanPhone = phone.replace(/\D/g, "").slice(-10);
-  if (!cleanPhone) return [];
+  if (cleanPhone.length < 10) return [];
 
-  const matched = new Map<string, Order>();
+  let remote: Order[] = [];
+  try {
+    const res = await fetch(`${CRM_API_BASE}/public/orders/by-phone/${cleanPhone}`, {
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const json = await res.json().catch(() => null);
+      remote = (Array.isArray(json?.data) ? (json.data as CrmOrderSummary[]) : [])
+        .map(mapCrmOrderToStorefrontOrder)
+        .filter((o): o is Order => o !== null);
+    }
+  } catch {
+    // CRM unreachable — fall through to the local cache below.
+  }
 
-  // Iterate stored orders (deduplicating by order.id)
+  // Merge anything this process created that the CRM has not yet listed, so an
+  // order placed seconds ago still appears immediately.
+  const merged = new Map<string, Order>();
+  for (const o of remote) merged.set(o.id, o);
   for (const order of ordersStore.values()) {
-    const orderClean = order.phone.replace(/\D/g, "").slice(-10);
-    if (orderClean === cleanPhone) {
-      matched.set(order.id, order);
+    if (order.phone.replace(/\D/g, "").slice(-10) === cleanPhone) {
+      merged.set(order.id, order);
     }
   }
 
-  return Array.from(matched.values()).sort(
+  return Array.from(merged.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+}
+
+/** Shape returned by GET /public/orders/by-phone/{phone}. */
+interface CrmOrderSummary {
+  id: number;
+  order_number: string;
+  customer_name: string;
+  customer_phone: string;
+  items: {
+    item_name: string;
+    portion_size: string;
+    quantity: number;
+    unit_price: number;
+    total_price: number;
+    is_free: boolean;
+  }[];
+  subtotal: number;
+  discount: number;
+  delivery_fee: number;
+  tax: number;
+  total_amount: number;
+  order_status: string;
+  payment_status: string;
+  payment_method: string;
+  order_type: string | null;
+  delivery_address: string | null;
+  created_at: string;
+}
+
+/** "500g" -> 500, "1kg" -> 1000. Used only to fill the size summary. */
+function parsePortionGrams(portion: string): number {
+  const raw = (portion || "").trim().toLowerCase();
+  const n = parseFloat(raw);
+  if (Number.isNaN(n)) return 0;
+  return raw.includes("kg") ? Math.round(n * 1000) : Math.round(n);
+}
+
+/** Map a CRM order summary onto the storefront's own Order shape. */
+function mapCrmOrderToStorefrontOrder(row: CrmOrderSummary): Order | null {
+  if (!row?.order_number) return null;
+
+  const type = (row.order_type || "").toUpperCase();
+  const method = (row.payment_method || "COD").toUpperCase();
+  const isOnline =
+    method.includes("ONLINE") || method.includes("UPI") || method.includes("CARD");
+
+  const deliveryAddress: DeliveryAddress | undefined = row.delivery_address
+    ? {
+        fullName: "",
+        phone: "",
+        streetAddress: row.delivery_address,
+        area: row.delivery_address,
+        pincode: "",
+        city: "Surat",
+      }
+    : undefined;
+
+  const items: CartItem[] = (row.items || []).map((i, idx) => ({
+    id: `${row.order_number}-${idx}`,
+    productId: i.item_name,
+    productName: i.item_name,
+    productSlug: i.item_name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    productImage: "",
+    isFree: Boolean(i.is_free),
+    size: {
+      id: i.portion_size,
+      label: i.portion_size,
+      weightGrams: parsePortionGrams(i.portion_size),
+      price: i.unit_price,
+      servesText: "",
+    },
+    quantity: i.quantity,
+    extras: [],
+    unitBasePrice: i.unit_price,
+    totalPrice: i.total_price,
+  }));
+
+  const order: Order = {
+    id: row.order_number,
+    orderNumber: row.order_number,
+    // Carried through so the invoice's "Billed To" block is not blank.
+    customerName: row.customer_name || "",
+    phone: row.customer_phone || "",
+    items,
+    subtotal: Number(row.subtotal) || 0,
+    discount: Number(row.discount) || 0,
+    deliveryFee: Number(row.delivery_fee) || 0,
+    tax: Number(row.tax) || 0,
+    total: Number(row.total_amount) || 0,
+    orderType: (type === "PICKUP" ? "pickup" : "delivery") as OrderType,
+    deliveryAddress,
+    paymentMethod: (isOnline ? "online" : "cash_on_delivery") as PaymentMethod,
+    paymentStatus: (row.payment_status || "PENDING").toUpperCase() as PaymentStatus,
+    orderStatus: (row.order_status || "NEW").toUpperCase() as OrderStatus,
+    crmOrderNumber: row.order_number,
+    estimatedDeliveryMinutes: 35,
+    createdAt: row.created_at,
+    updatedAt: row.created_at,
+  };
+
+  return order;
 }

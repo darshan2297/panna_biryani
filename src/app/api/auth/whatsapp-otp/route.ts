@@ -1,8 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrdersByPhone } from "@/services/orders/orderService";
+import { CRM_API_BASE } from "@/lib/crmConfig";
 
 // Temporary WhatsApp OTP code as requested by the user
 const TEMP_WHATSAPP_CODE = "123456";
+
+/**
+ * Resolve the real customer name from the CRM customer record.
+ *
+ * This is the authoritative source. Resolving from order history instead was
+ * unreliable: `getOrdersByPhone` reads an in-memory store populated only by
+ * orders placed since the server last started, so a returning customer with no
+ * *recent* order looked unknown and was given a fabricated "Panna Foodie 1205"
+ * name instead of their real one.
+ */
+async function lookupCrmCustomerName(phone: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${CRM_API_BASE}/public/customers/phone-exists`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const name = json?.data?.name;
+    return typeof name === "string" && name.trim() ? name.trim() : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,10 +85,12 @@ export async function POST(request: NextRequest) {
       const existingOrders = await getOrdersByPhone(cleanPhone);
       const latestOrder = existingOrders[0];
 
+      // Preference order: what the customer typed at login, then the CRM
+      // customer record, then any name on a recent order. Never a fabricated
+      // name — an unknown customer simply gets an empty name and is asked.
+      const crmName = await lookupCrmCustomerName(cleanPhone);
       const customerName =
-        (name && name.trim()) ||
-        latestOrder?.customerName ||
-        `Panna Foodie ${cleanPhone.slice(-4)}`;
+        (name && name.trim()) || crmName || latestOrder?.customerName || "";
 
       const customerEmail = latestOrder?.email;
 

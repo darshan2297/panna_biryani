@@ -478,15 +478,19 @@ function ComboCard({ combo }: { combo: ComboPack }) {
     });
   };
 
+  // Side-by-side only from lg. In a 2-up md grid each card is ~348px, and a
+  // 192px shrink-0 image leaves too little room for the text column, which then
+  // overflowed the card (flex-1 cannot shrink below its content without
+  // min-w-0). Stacking until lg keeps both readable and inside the card.
   return (
-    <div className="bg-white rounded-2xl border border-panna-border p-4 sm:p-5 flex flex-col sm:flex-row gap-5 shadow-xs hover:border-panna-gold transition-colors">
-      <div className="relative aspect-4/3 sm:aspect-square sm:w-48 rounded-xl overflow-hidden shrink-0 bg-zinc-100">
+    <div className="bg-white rounded-2xl border border-panna-border p-4 sm:p-5 flex flex-col lg:flex-row gap-5 shadow-xs hover:border-panna-gold transition-colors">
+      <div className="relative aspect-4/3 lg:aspect-square lg:w-48 rounded-xl overflow-hidden shrink-0 bg-zinc-100">
         <Image
           src={combo.image}
           alt={combo.name}
           fill
           className="object-cover"
-          sizes="(max-width: 640px) 100vw, 200px"
+          sizes="(max-width: 1024px) 100vw, 200px"
         />
         {combo.badge && (
           <span className="absolute top-3 left-3 bg-red-800 text-white font-black text-xs uppercase px-2 py-0.5 rounded shadow">
@@ -495,7 +499,7 @@ function ComboCard({ combo }: { combo: ComboPack }) {
         )}
       </div>
 
-      <div className="flex-1 flex flex-col justify-between space-y-3">
+      <div className="min-w-0 flex-1 flex flex-col justify-between space-y-3">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800">
             <Users className="w-3.5 h-3.5" />

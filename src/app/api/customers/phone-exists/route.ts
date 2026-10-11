@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
+import { CRM_API_BASE as BASE } from "@/lib/crmConfig";
 
 export const dynamic = "force-dynamic";
 

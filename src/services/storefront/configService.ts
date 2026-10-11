@@ -1,7 +1,25 @@
 import { Product, ComboPack, ExtraItem, ReviewItem, FAQItem, DeliveryAreaConfig } from "@/types";
+import { CRM_MEDIA_ORIGIN } from "@/lib/crmConfig";
 
-const BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
-const CRM_ORIGIN = BASE.replace(/\/api\/v1.*$/, "");
+/**
+ * Base URL for CRM reads, which differs by runtime because this module is
+ * imported by both server components and client components.
+ *
+ * Browser: the same-origin `/api/storefront` proxy. The CRM API base is
+ * server-side only (no `NEXT_PUBLIC_` prefix), so calling it straight from the
+ * browser silently fell back to `http://localhost:8000` — the *visitor's own*
+ * machine — leaving menu, reviews, FAQs and promos empty everywhere except on
+ * the developer's laptop.
+ *
+ * Server: the CRM origin directly. `fetch` rejects relative URLs, so the proxy
+ * path cannot be used here — routing server reads through it made every one of
+ * them fail and resolve to `null`, which emptied the server-rendered menu and
+ * 404'd every product page.
+ */
+const CRM_API_BASE =
+  (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
+
+const BASE = typeof window === "undefined" ? CRM_API_BASE : "/api/storefront";
 
 export interface StorefrontConfig {
   logo_url: string | null;
@@ -115,7 +133,7 @@ export interface MenuData {
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url) return "";
-  if (url.startsWith("/media/")) return `${CRM_ORIGIN}${url}`;
+  if (url.startsWith("/media/")) return `${CRM_MEDIA_ORIGIN}${url}`;
   return url;
 }
 

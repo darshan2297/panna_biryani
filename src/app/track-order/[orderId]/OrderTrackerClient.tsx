@@ -16,8 +16,6 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const CRM_API_BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
-
 const TIMELINE_STEPS: {
   status: OrderStatus;
   label: string;
@@ -72,7 +70,7 @@ export function OrderTrackerClient({ order: initialOrder }: { order: Order }) {
 
     const poll = async () => {
       try {
-        const res = await fetch(`${CRM_API_BASE}/public/orders/track/${order.crmOrderNumber}`, {
+        const res = await fetch(`/api/orders/track/${order.crmOrderNumber}`, {
           cache: "no-store",
         });
         if (!res.ok) return;

@@ -1,6 +1,6 @@
 "use client";
 
-const BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
+import { CRM_API_BASE as BASE } from "@/lib/crmConfig";
 
 export interface ContactInquiryPayload {
   inquiry_type: "contact" | "bulk";

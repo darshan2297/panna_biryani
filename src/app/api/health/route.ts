@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
+import { CRM_API_BASE as BACKEND_BASE } from "@/lib/crmConfig";
 
 export const dynamic = "force-dynamic";
 
-const BACKEND_BASE = (
-  process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1"
-).replace(/\/$/, "");
 const PROBE_TIMEOUT_MS = 5_000;
 
 /**

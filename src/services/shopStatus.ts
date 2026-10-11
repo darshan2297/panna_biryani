@@ -1,4 +1,5 @@
 import { ShopStatus, PublicBusinessHours } from "@/types";
+import { CRM_API_BASE } from "@/lib/crmConfig";
 
 // Fail-closed defaults: while the CRM is unreachable we report the shop as
 // closed/unknown rather than inventing an "open" status.
@@ -26,7 +27,7 @@ const DEFAULT_SHOP_STATUS: ShopStatus = {
  */
 export async function getWebsiteShopStatus(): Promise<ShopStatus> {
   try {
-    const base = process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1";
+    const base = CRM_API_BASE;
     const res = await fetch(`${base}/public/shop-status`, { cache: "no-store" });
     if (!res.ok) return DEFAULT_SHOP_STATUS;
     const json = await res.json();

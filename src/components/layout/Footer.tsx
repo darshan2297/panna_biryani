@@ -140,7 +140,12 @@ export function Footer() {
         </div>
 
         {/* DESKTOP VIEW (>= md): Full horizontal column layout */}
-        <div className="hidden md:flex flex-nowrap items-start justify-between gap-6 lg:gap-8 pb-6">
+        {/* Five columns must be allowed to wrap until xl. `flex-nowrap` plus
+            `shrink-0` on every column forced the natural widths past the
+            viewport at tablet and small-desktop widths (284px of overflow at
+            768, 68px at 1024), pushing the last column and the whole page
+            sideways. The row only genuinely fits from 1280 up. */}
+        <div className="hidden md:flex flex-wrap items-start justify-between gap-x-6 gap-y-6 xl:flex-nowrap xl:gap-8 pb-6">
           {/* Column 1: Logo + Brand Identity */}
           <div className="flex items-center gap-3 shrink-0">
             <BrandLogo size="footer" showText={true} />
@@ -261,13 +266,17 @@ export function Footer() {
         </div>
 
         {/* Policies Bar */}
-        <div className="border-t border-white/15 py-3.5">
-          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[11px] sm:text-[12px] text-white/75 leading-none">
+        <div className="border-t border-white/15 py-4">
+          {/* Four links wrap onto two rows well before sm, so the row gap needs
+              real breathing room — gap-y-1 made the stacked lines read as a
+              single blob on mobile. Items also carry a little inline padding so
+              neighbouring links do not look glued together. */}
+          <nav className="flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-6 gap-y-2.5 text-[11px] sm:text-[12px] text-white/75 leading-snug">
             {policyLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="whitespace-nowrap hover:text-[#E8B94A] transition-colors"
+                className="px-1 whitespace-nowrap hover:text-[#E8B94A] transition-colors"
               >
                 {link.label}
               </Link>

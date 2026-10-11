@@ -169,9 +169,27 @@ export interface Order {
   crmOrderNumber?: string;
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
+  refund?: RefundDetails;
   estimatedDeliveryMinutes: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A refund as reported by the payment gateway.
+ *
+ * `status` is Razorpay's own verdict, not a local guess. Only `processed`
+ * means the money has actually reached the customer — `pending` and `failed`
+ * must never be worded as a completed refund.
+ */
+export interface RefundDetails {
+  amount: number;
+  refunded_at: string;
+  status: "processed" | "pending" | "failed";
+  reference: string | null;
+  receipt: string | null;
+  gateway: string;
+  reason: string | null;
 }
 
 export interface BulkOrderRequest {

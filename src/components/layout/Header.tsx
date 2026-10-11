@@ -85,8 +85,11 @@ export function Header() {
           />
         </Link>
 
-        {/* Navigation has a predictable gap from the contained logo at every desktop size. */}
-        <nav className="hidden lg:flex items-center gap-6 xl:gap-8 2xl:gap-9 3xl:gap-11 ml-8 xl:ml-12 text-[14.5px] xl:text-[15.5px] 3xl:text-[17px] 4k:text-[19px] font-medium text-white/90">
+        {/* Navigation has a predictable gap from the contained logo at every desktop
+            size. The gap and left margin are tighter at lg because at 1024px
+            the logo, five nowrap links and the full right-hand control cluster
+            (including search) do not fit on one line and overflowed. */}
+        <nav className="hidden lg:flex min-w-0 items-center gap-4 xl:gap-7 2xl:gap-9 3xl:gap-11 ml-5 xl:ml-10 2xl:ml-12 text-[14px] xl:text-[15.5px] 3xl:text-[17px] 4k:text-[19px] font-medium text-white/90">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
             return (
@@ -106,10 +109,12 @@ export function Header() {
 
         {/* Right side: Search, User icon, Cart with red badge & price */}
         <div className="flex items-center gap-3 sm:gap-4 xl:gap-5 ml-auto mr-2 sm:mr-4 lg:mr-8 xl:mr-12 2xl:mr-16">
-          {/* Pill Search */}
+          {/* Pill Search — deferred to xl. At lg the logo + nav + status pill + login +
+            cart already fill the row, so a fixed-width search was the element
+            pushing the controls past the right edge. */}
           <form
             onSubmit={handleSearchSubmit}
-            className="hidden lg:flex items-center relative w-[210px] xl:w-[245px] 2xl:w-[275px]"
+            className="hidden xl:flex items-center relative w-[190px] 2xl:w-[245px]"
           >
             <input
               type="text"
@@ -325,11 +330,13 @@ export function Header() {
       )}
     </header>
 
-    {/* Closed banner — shown under the header on all pages while the shop is closed */}
+    {/* Closed banner — shown under the header on all pages while the shop is closed.
+        On mobile the left half is covered by the decorative brand art, so the
+        message is pushed to the right; from sm up there is room to centre it. */}
     {showClosed && (
-      <div className="sticky top-[64px] z-40 w-full bg-rose-700 text-white text-center text-[12px] sm:text-[13px] font-semibold px-4 py-2 flex items-center justify-center gap-2 shadow-md">
+      <div className="sticky top-[64px] z-40 w-full bg-rose-700 text-white text-right sm:text-center text-[12px] sm:text-[13px] font-semibold px-4 py-2 flex items-center justify-end sm:justify-center gap-2 shadow-md">
         <AlertCircle className="w-4 h-4 shrink-0" />
-        <span>{closedMessage || "We are currently closed."}</span>
+        <span className="min-w-0">{closedMessage || "We are currently closed."}</span>
       </div>
     )}
     </>

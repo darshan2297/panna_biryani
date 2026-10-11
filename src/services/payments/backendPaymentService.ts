@@ -6,9 +6,9 @@
  * secret lives. This keeps credentials out of the browser bundle.
  */
 
-const CRM_BASE = (
-  process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1"
-).replace(/\/$/, "");
+import { CRM_API_BASE } from "@/lib/crmConfig";
+
+const CRM_BASE = CRM_API_BASE;
 
 export interface BackendPaymentSession {
   provider: string;

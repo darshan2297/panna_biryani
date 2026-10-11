@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Order, OrderStatus } from "@/types";
+import { Order, OrderStatus, RefundDetails } from "@/types";
+import { RefundSlipCard } from "@/components/orders/RefundSlipCard";
 import { formatINR, cn } from "@/lib/utils";
 import { siteConfig } from "@/data/siteConfig";
 import { useStorefrontStore } from "@/store/useStorefrontStore";
@@ -40,8 +41,6 @@ interface OrderDetailClientProps {
   initialOrder: Order | null;
 }
 
-const CRM_API_BASE = (process.env.PANNA_CRM_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
-
 export function OrderDetailClient({
   orderId, initialOrder }: OrderDetailClientProps) {
   const products = useStorefrontStore((st) => st.products);
@@ -57,17 +56,28 @@ export function OrderDetailClient({
 
     const poll = async () => {
       try {
-        const res = await fetch(`${CRM_API_BASE}/public/orders/track/${order.crmOrderNumber}`, {
+        const res = await fetch(`/api/orders/track/${order.crmOrderNumber}`, {
           cache: "no-store",
         });
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
         const status = json?.data?.order_status as OrderStatus | undefined;
-        if (status && status !== order.orderStatus) {
-          setOrder((prev) =>
-            prev ? { ...prev, orderStatus: status, updatedAt: new Date().toISOString() } : prev
-          );
-        }
+        const refund = json?.data?.refund as RefundDetails | null | undefined;
+        setOrder((prev) => {
+          if (!prev) return prev;
+          const nextStatus = status && status !== prev.orderStatus ? status : prev.orderStatus;
+          // Refunds arrive after the fact (often long after the order), so this
+          // poll is how the slip appears on an order placed before the refund.
+          const refundChanged =
+            JSON.stringify(refund ?? null) !== JSON.stringify(prev.refund ?? null);
+          if (nextStatus === prev.orderStatus && !refundChanged) return prev;
+          return {
+            ...prev,
+            orderStatus: nextStatus,
+            refund: refund ?? prev.refund,
+            updatedAt: new Date().toISOString(),
+          };
+        });
       } catch {
         // ignore transient network errors
       }
@@ -774,6 +784,16 @@ export function OrderDetailClient({
               </p>
             </div>
           </div>
+
+          {/* Refund slip — only when this order has actually been refunded. The status
+          shown is the gateway's own verdict, so a pending/failed refund is
+          never presented as money returned. */}
+          {order.refund && (
+            <RefundSlipCard
+              orderNumber={order.crmOrderNumber || order.orderNumber}
+              refund={order.refund}
+            />
+          )}
 
           {/* Footer Note & WhatsApp Assistance */}
           <div className="pt-6 border-t border-[#E3DACB] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
