@@ -56,12 +56,12 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
     ]);
     set({
       loaded: true,
-      config: config,
-      paymentMethods: paymentMethods && paymentMethods.length > 0 ? paymentMethods : [],
-      promoCodes: promoCodes && promoCodes.length > 0 ? promoCodes : [],
-      products: menu && menu.products ? menu.products.map((p) => ({ ...p, image: resolveImageUrl(p.image) })) : [],
-      combos: menu && menu.combos ? menu.combos.map((c) => ({ ...c, image: resolveImageUrl(c.image) })) : [],
-      extras: menu && menu.extras ? menu.extras.map((e) => ({ ...e, image: resolveImageUrl(e.image) })) : [],
+      config,
+      paymentMethods: paymentMethods ?? [],
+      promoCodes: promoCodes ?? [],
+      products: menu?.products?.map((p) => ({ ...p, image: resolveImageUrl(p.image) })) ?? [],
+      combos: menu?.combos?.map((c) => ({ ...c, image: resolveImageUrl(c.image) })) ?? [],
+      extras: menu?.extras?.map((e) => ({ ...e, image: resolveImageUrl(e.image) })) ?? [],
       reviews: reviews ?? [],
       faqs: faqs ?? [],
       deliveryAreas: deliveryAreas ?? [],
@@ -69,37 +69,42 @@ export const useStorefrontStore = create<StorefrontState>()((set, get) => ({
 
     // Reflect CRM config into the legacy siteConfig object so existing
     // components reading it directly pick up the new values on re-render.
-    if (config) {
-      try {
-        (siteConfig as any).name = config.brand_name || siteConfig.name;
-        (siteConfig as any).tagline = config.brand_tagline || siteConfig.tagline;
-        if (config.address_line) (siteConfig as any).pickupLocation.address = config.address_line;
-        if (config.area) (siteConfig as any).pickupLocation.area = config.area;
-        if (config.city) (siteConfig as any).pickupLocation.city = config.city;
-        if (config.pincode) (siteConfig as any).pickupLocation.pincode = config.pincode;
-        if (config.google_maps_url) (siteConfig as any).pickupLocation.googleMapsUrl = config.google_maps_url;
-        if (config.phone) {
-          (siteConfig as any).contact.phone = config.phone;
-          (siteConfig as any).contact.phoneDisplay = config.phone;
-        }
-        if (config.whatsapp) {
-          (siteConfig as any).contact.whatsapp = config.whatsapp;
-          (siteConfig as any).contact.whatsappDisplay = config.whatsapp;
-        }
-        if (config.email) (siteConfig as any).contact.email = config.email;
-        (siteConfig as any).pricingRules.defaultDeliveryFee = Number(config.delivery_fee);
-        (siteConfig as any).pricingRules.freeDeliveryThreshold = Number(config.free_delivery_threshold);
-        (siteConfig as any).deliveryAreas = deliveryAreas && deliveryAreas.length > 0
-          ? deliveryAreas
-          : config.delivery_enabled !== false
-          ? [{ name: config.area || "Surat", pincode: config.pincode || "395007", deliveryFee: Number(config.delivery_fee), estimatedMinutes: 40, minOrder: 0 }]
-          : [];
-      } catch {
-        /* ignore mutation errors */
-      }
-    }
+    if (config) applyCmsConfigToSiteConfig(config);
   },
 }));
+
+/**
+ * Overwrite `siteConfig` with the CMS values, keeping the hard-coded literal
+ * as the fallback for anything the CRM leaves blank.
+ *
+ * Every field is only written when the CMS supplies a value, so a partially
+ * configured storefront degrades to the bundled defaults rather than blanks.
+ */
+function applyCmsConfigToSiteConfig(config: StorefrontConfig): void {
+  const { pickupLocation, contact, pricingRules } = siteConfig;
+
+  siteConfig.name = config.brand_name || siteConfig.name;
+  siteConfig.tagline = config.brand_tagline || siteConfig.tagline;
+
+  if (config.address_line) pickupLocation.address = config.address_line;
+  if (config.area) pickupLocation.area = config.area;
+  if (config.city) pickupLocation.city = config.city;
+  if (config.pincode) pickupLocation.pincode = config.pincode;
+  if (config.google_maps_url) pickupLocation.googleMapsUrl = config.google_maps_url;
+
+  if (config.phone) {
+    contact.phone = config.phone;
+    contact.phoneDisplay = config.phone;
+  }
+  if (config.whatsapp) {
+    contact.whatsapp = config.whatsapp;
+    contact.whatsappDisplay = config.whatsapp;
+  }
+  if (config.email) contact.email = config.email;
+
+  pricingRules.defaultDeliveryFee = Number(config.delivery_fee);
+  pricingRules.freeDeliveryThreshold = Number(config.free_delivery_threshold);
+}
 
 // Sync helpers — values come from the CRM API (loaded storefront store) only
 export function getStorefront() {

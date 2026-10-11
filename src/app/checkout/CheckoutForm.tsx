@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/useCartStore";
@@ -65,11 +65,18 @@ export function CheckoutForm() {
 
   const { isOpen, guard } = useShopGate();
 
+  // Snapshot of the initially selected area/pincode. The mount effect below
+  // seeds the cart store exactly once; later changes are pushed to the store
+  // by the area <select> onChange handler, so the effect must not re-run (it
+  // would fire a duplicate `begin_checkout` analytics event).
+  const initialArea = useRef({ selectedArea, pincode });
+
   useEffect(() => {
     setMounted(true);
     trackEvent("begin_checkout");
     // Sync the default area into the cart store so the fee matches the selector
-    useCartStore.getState().setSelectedArea(selectedArea, pincode);
+    const { selectedArea: area, pincode: pin } = initialArea.current;
+    useCartStore.getState().setSelectedArea(area, pin);
     const existingUser = useUserSessionStore.getState().user;
     if (existingUser) {
       // A promo-gated sign-in can leave a placeholder (or no) name in the

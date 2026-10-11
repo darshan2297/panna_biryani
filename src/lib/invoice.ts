@@ -91,7 +91,6 @@ function buildStoreInvoiceHtml(data: StoreInvoiceData): string {
     data.gstAmount != null
       ? Number(data.gstAmount)
       : extractGst(discounted, gstPct);
-  const netGoods = Math.max(0, discounted - gst);
 
   const sellerLines = [
     data.address,

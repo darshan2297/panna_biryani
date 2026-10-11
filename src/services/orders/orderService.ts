@@ -120,7 +120,7 @@ export function calculateOrderTotals(
 
     if (itemInput.isCombo) {
       // Find matching combo
-      const { combos, products, extras } = currentMenu();
+      const { combos } = currentMenu();
       const combo = combos.find((c) => c.id === itemInput.productId);
       if (!combo) continue;
 

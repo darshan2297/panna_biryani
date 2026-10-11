@@ -9,7 +9,6 @@ import {
   User,
   ArrowRight,
   CheckCircle2,
-  Sparkles,
   RotateCcw,
 } from "lucide-react";
 

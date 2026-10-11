@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { CartItem, Product, ProductSize, ExtraItem, OrderType, Offer, ComboPack } from "@/types";
-import { siteConfig } from "@/data/siteConfig";
 import { getDeliverySettings, findPromoCode, getStorefront } from "@/store/useStorefrontStore";
 import { validatePromoCode, resolveDiscountAmount, PHONE_REQUIRED } from "@/services/storefront/configService";
 
@@ -415,11 +414,11 @@ export const useCartStore = create<CartState>()(
         const areas = getStorefront().deliveryAreas || [];
         const areaName = (state.selectedArea || "").toLowerCase();
         const matched = areas.find(
-          (a: any) =>
+          (a) =>
             (areaName && String(a.name).toLowerCase() === areaName) ||
             (state.pincode && a.pincode === state.pincode)
         );
-        if (matched) return Number((matched as any).delivery_fee ?? ds.deliveryFee);
+        if (matched) return Number(matched.delivery_fee ?? ds.deliveryFee);
 
         // Fallback: flat fee from CRM storefront config
         return ds.deliveryFee;
