@@ -112,7 +112,7 @@ export function BrandLogo({
             <span className={cn(highlightFirstWord && "text-panna-gold")}>{headWord}</span>
             {tailWords ? ` ${tailWords}` : null}
           </span>
-          <span className="text-zinc-300 italic font-medium tracking-wide text-[10px] xl:text-[11px] 2xl:text-xs whitespace-nowrap">
+          <span className="text-zinc-300 italic font-medium tracking-wide text-[9px] xl:text-[10px] 2xl:text-[11px] whitespace-nowrap">
             Biryani Made For Sharing
           </span>
         </div>
