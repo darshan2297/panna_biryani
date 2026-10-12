@@ -35,6 +35,7 @@ import {
   Upload,
   Trash2,
   Dices,
+  ChevronDown,
 } from "lucide-react";
 import {
   ROYAL_TAGS,
@@ -44,11 +45,70 @@ import {
   getRoyalTagByTitle,
 } from "@/lib/royalTags";
 
+/** How many order cards are revealed at a time in the history list. */
+const ORDERS_PAGE_SIZE = 10;
+
+interface DateRange {
+  id: "30d" | "3m" | "6m" | "90d" | "all";
+  label: string;
+  /** Rolling window in days. Mutually exclusive with `months`. */
+  days?: number;
+  /** Calendar window in months. Mutually exclusive with `days`. */
+  months?: number;
+}
+
+/**
+ * Date buckets offered above the order history.
+ *
+ * Opens on "Last 30 Days" -- the overwhelming majority of visits are a
+ * returning customer checking something recent, and a 10-per-page list of
+ * year-old orders was burying it. Older orders stay one click away: the empty
+ * state offers "Show All Time", and the dropdown lists the full range.
+ */
+const DATE_RANGES: DateRange[] = [
+  { id: "30d", label: "Last 30 Days", days: 30 },
+  { id: "3m", label: "Last 3 Months", months: 3 },
+  { id: "6m", label: "Last 6 Months", months: 6 },
+  { id: "90d", label: "Last 90 Days", days: 90 },
+  { id: "all", label: "All Time" },
+];
+
+/**
+ * Earliest timestamp a range includes, or null for "All Time".
+ *
+ * Months step the calendar month rather than multiplying by 30, so "Last 3
+ * Months" on 31 Jan means 31 Oct, not 1 Nov.
+ */
+function rangeCutoff(range: DateRange): number | null {
+  if (range.days === undefined && range.months === undefined) return null;
+  const d = new Date();
+  if (range.days !== undefined) d.setDate(d.getDate() - range.days);
+  else d.setMonth(d.getMonth() - (range.months as number));
+  return d.getTime();
+}
+
+const ACTIVE_STATUSES: OrderStatus[] = [
+  "CONFIRMED",
+  "PREPARING",
+  "READY",
+  "OUT_FOR_DELIVERY",
+];
+const COMPLETED_STATUSES: OrderStatus[] = ["DELIVERED", "COMPLETED"];
+
+const isActiveOrder = (o: Order) => ACTIVE_STATUSES.includes(o.orderStatus);
+const isCompletedOrder = (o: Order) => COMPLETED_STATUSES.includes(o.orderStatus);
+
 export function ProfileClient() {
   const products = useStorefrontStore((st) => st.products);
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [filter, setFilter] = useState<"all" | "active" | "delivered">("all");
+
+  // Order history: date-range dropdown + incremental "Load More" paging.
+  const [dateRange, setDateRange] = useState<DateRange["id"]>("30d");
+  const [visibleCount, setVisibleCount] = useState(ORDERS_PAGE_SIZE);
+  const [isRangeOpen, setIsRangeOpen] = useState(false);
+  const rangeRef = useRef<HTMLDivElement>(null);
 
   // Inline Name Edit State
   const [isEditingName, setIsEditingName] = useState(false);
@@ -132,6 +192,32 @@ export function ProfileClient() {
       cancelled = true;
     };
   }, [mounted, userPhone, setOrders]);
+
+  // Narrowing the range or the status tab must collapse the list back to one
+  // page, otherwise "Load More" leaves the user on page 4 of a 12-order result
+  // with nothing to scroll.
+  useEffect(() => {
+    setVisibleCount(ORDERS_PAGE_SIZE);
+  }, [dateRange, filter]);
+
+  // Close the date-range dropdown on outside click or Escape.
+  useEffect(() => {
+    if (!isRangeOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (rangeRef.current && !rangeRef.current.contains(e.target as Node)) {
+        setIsRangeOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsRangeOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isRangeOpen]);
 
   if (!mounted) return null;
 
@@ -361,24 +447,42 @@ export function ProfileClient() {
     }
   };
 
-  // Filter orders
-  const activeOrders = orders.filter(
-    (o) =>
-      o.orderStatus === "CONFIRMED" ||
-      o.orderStatus === "PREPARING" ||
-      o.orderStatus === "READY" ||
-      o.orderStatus === "OUT_FOR_DELIVERY"
-  );
-  const deliveredOrders = orders.filter(
-    (o) => o.orderStatus === "DELIVERED" || o.orderStatus === "COMPLETED"
-  );
+  // Order history pipeline: date range -> status tab -> reveal slice.
+  const activeRange =
+    DATE_RANGES.find((r) => r.id === dateRange) ?? DATE_RANGES[DATE_RANGES.length - 1];
+  const cutoff = rangeCutoff(activeRange);
 
-  const displayedOrders =
+  const scopedOrders =
+    cutoff === null
+      ? orders
+      : orders.filter((o) => {
+          // An order with a missing/unparseable date cannot be placed in a
+          // window, so it drops out of every range and only appears under
+          // "All Time" rather than being silently bucketed into "Last 30 Days".
+          const t = new Date(o.createdAt).getTime();
+          return !Number.isNaN(t) && t >= cutoff;
+        });
+
+  // These two buckets are scoped to the chosen range so the tab counts always
+  // describe the list on screen. The stat cards above deliberately stay on the
+  // lifetime set -- they are account totals, not a view of this list.
+  const activeOrders = scopedOrders.filter(isActiveOrder);
+  const deliveredOrders = scopedOrders.filter(isCompletedOrder);
+  const lifetimeActiveCount = orders.filter(isActiveOrder).length;
+
+  const statusFilteredOrders =
     filter === "active"
       ? activeOrders
       : filter === "delivered"
       ? deliveredOrders
-      : orders;
+      : scopedOrders;
+
+  // Every order is already in memory -- `/api/orders/user` returns the complete
+  // history for the number -- so paging is a pure reveal, not a fetch. That is
+  // what makes the range/tab switches instant with no loading state.
+  const visibleOrders = statusFilteredOrders.slice(0, visibleCount);
+  const hasMore = visibleCount < statusFilteredOrders.length;
+  const remainingCount = statusFilteredOrders.length - visibleCount;
 
   const totalSpent = orders.reduce((sum, o) => sum + (o.total || 0), 0);
 
@@ -616,7 +720,7 @@ export function ProfileClient() {
                 Active Deliveries
               </span>
               <span className="text-xl sm:text-2xl font-serif font-black text-[#B3261E]">
-                {activeOrders.length}
+                {lifetimeActiveCount}
               </span>
             </div>
           </div>
@@ -635,72 +739,148 @@ export function ProfileClient() {
               </p>
             </div>
 
-            {/* Filter Tabs */}
-            <div className="inline-flex p-1 bg-[#ECE4D4] rounded-xl text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setFilter("all")}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
-                  filter === "all"
-                    ? "bg-white text-[#00241b] shadow-xs font-bold"
-                    : "text-zinc-600 hover:text-zinc-900"
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Filter Tabs */}
+              <div className="inline-flex p-1 bg-[#ECE4D4] rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setFilter("all")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
+                    filter === "all"
+                      ? "bg-white text-[#00241b] shadow-xs font-bold"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  )}
+                >
+                  All ({scopedOrders.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter("active")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
+                    filter === "active"
+                      ? "bg-white text-[#00241b] shadow-xs font-bold"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  )}
+                >
+                  Active ({activeOrders.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter("delivered")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
+                    filter === "delivered"
+                      ? "bg-white text-[#00241b] shadow-xs font-bold"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  )}
+                >
+                  Delivered ({deliveredOrders.length})
+                </button>
+              </div>
+
+              {/* Date range dropdown. Anchored right on mobile and left from sm
+                  up so it drops toward the middle of the page rather than off
+                  the right edge on narrow screens. */}
+              <div className="relative" ref={rangeRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsRangeOpen((v) => !v)}
+                  aria-haspopup="listbox"
+                  aria-expanded={isRangeOpen}
+                  aria-label={`Filter orders by date, currently ${activeRange.label}`}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#E3DACB] bg-white hover:bg-zinc-50 text-xs font-semibold text-zinc-700 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-[#007A55] shrink-0" />
+                  <span className="whitespace-nowrap">{activeRange.label}</span>
+                  <ChevronDown
+                    className={cn(
+                      "w-3.5 h-3.5 text-zinc-400 shrink-0 transition-transform duration-200",
+                      isRangeOpen && "rotate-180"
+                    )}
+                  />
+                </button>
+
+                {isRangeOpen && (
+                  <ul
+                    role="listbox"
+                    aria-label="Date range"
+                    className="absolute right-0 sm:left-0 z-30 mt-1.5 w-48 bg-white rounded-xl border border-[#E3DACB] shadow-lg py-1 overflow-hidden"
+                  >
+                    {DATE_RANGES.map((r) => (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={r.id === dateRange}
+                          onClick={() => {
+                            setDateRange(r.id);
+                            setIsRangeOpen(false);
+                          }}
+                          className={cn(
+                            "w-full px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer flex items-center justify-between gap-2 text-left",
+                            r.id === dateRange
+                              ? "bg-[#003F32] text-white"
+                              : "text-zinc-700 hover:bg-[#FAF7F2]"
+                          )}
+                        >
+                          <span>{r.label}</span>
+                          {r.id === dateRange && (
+                            <Check className="w-3.5 h-3.5 text-[#E8B94A] shrink-0" />
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              >
-                All ({orders.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter("active")}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
-                  filter === "active"
-                    ? "bg-white text-[#00241b] shadow-xs font-bold"
-                    : "text-zinc-600 hover:text-zinc-900"
-                )}
-              >
-                Active ({activeOrders.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter("delivered")}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg transition-all cursor-pointer",
-                  filter === "delivered"
-                    ? "bg-white text-[#00241b] shadow-xs font-bold"
-                    : "text-zinc-600 hover:text-zinc-900"
-                )}
-              >
-                Delivered ({deliveredOrders.length})
-              </button>
+              </div>
             </div>
           </div>
 
           {/* Orders List */}
-          {displayedOrders.length === 0 ? (
+          {statusFilteredOrders.length === 0 ? (
             <div className="bg-white rounded-3xl border border-[#E3DACB] p-10 text-center space-y-4 shadow-xs">
               <div className="w-16 h-16 rounded-full bg-[#FAF7F2] border border-[#E3DACB] flex items-center justify-center mx-auto text-zinc-400">
                 <ShoppingBag className="w-8 h-8 stroke-[1.5]" />
               </div>
               <h3 className="font-serif text-lg font-bold text-[#00241b]">
-                {filter === "all"
+                {dateRange !== "all"
+                  ? `No orders in ${activeRange.label.toLowerCase()}`
+                  : filter === "all"
                   ? "No orders found for this number"
                   : `No ${filter} orders right now`}
               </h3>
               <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                Ready to indulge in Surat&apos;s finest slow-cooked vegetarian dum biryani?
+                {dateRange !== "all" && orders.length > 0
+                  ? `You have ${orders.length} order${orders.length === 1 ? "" : "s"} on record outside this period.`
+                  : "Ready to indulge in Surat's finest slow-cooked vegetarian dum biryani?"}
               </p>
-              <Link
-                href="/menu"
-                className="inline-flex items-center gap-2 bg-[#003F32] hover:bg-[#002e24] text-white font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all"
-              >
-                <span>Browse Menu</span>
-                <ArrowRight className="w-3.5 h-3.5 text-[#E8B94A]" />
-              </Link>
+              {/* A narrow range over an existing history needs a way back out,
+                  otherwise those orders are only reachable by reopening the
+                  dropdown and remembering the right option. */}
+              {dateRange !== "all" && orders.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setDateRange("all")}
+                  className="inline-flex items-center gap-2 bg-[#003F32] hover:bg-[#002e24] text-white font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer"
+                >
+                  <span>Show All Time</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#E8B94A]" />
+                </button>
+              ) : (
+                <Link
+                  href="/menu"
+                  className="inline-flex items-center gap-2 bg-[#003F32] hover:bg-[#002e24] text-white font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider shadow-sm transition-all"
+                >
+                  <span>Browse Menu</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#E8B94A]" />
+                </Link>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
-              {displayedOrders.map((order) => {
+              {visibleOrders.map((order) => {
                 const badge = getStatusBadge(order.orderStatus);
                 return (
                   <div
@@ -850,6 +1030,30 @@ export function ProfileClient() {
                   </div>
                 );
               })}
+
+              {/* Load More. Pure client-side reveal -- the full history is
+                  already resident, so this costs no request and needs no
+                  spinner. Hidden entirely once everything is shown. */}
+              <div className="flex flex-col items-center gap-2.5 pt-1">
+                <p className="text-[11px] text-zinc-500 text-center">
+                  Showing {visibleOrders.length} of {statusFilteredOrders.length} order
+                  {statusFilteredOrders.length === 1 ? "" : "s"}
+                  {dateRange !== "all" && <> in {activeRange.label.toLowerCase()}</>}
+                  {filter !== "all" && <> &middot; {filter}</>}
+                </p>
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((c) => c + ORDERS_PAGE_SIZE)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#003F32] hover:bg-[#002e24] text-white text-xs font-bold tracking-wide shadow-sm transition-all cursor-pointer active:scale-[0.98]"
+                  >
+                    <span>
+                      Load {Math.min(ORDERS_PAGE_SIZE, remainingCount)} more
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-[#E8B94A]" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
