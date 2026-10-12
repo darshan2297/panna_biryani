@@ -82,32 +82,56 @@ export function ProfileClient() {
 
   // Fetch updated orders from API for this user's phone
   const userPhone = user?.phone;
+
+  // Guards against a fetch loop. `orders` used to be both a dependency of this
+  // effect and rewritten by it, so every response produced a new array
+  // reference, re-triggered the effect, and re-fetched — an endless loop. The
+  // effect now depends only on who is signed in, reads the current orders
+  // imperatively, and skips the state write when nothing changed.
+  const lastSignature = useRef<string | null>(null);
+
   useEffect(() => {
     if (!mounted || !userPhone) return;
+
+    let cancelled = false;
 
     async function syncOrders() {
       try {
         const res = await fetch(`/api/orders/user?phone=${encodeURIComponent(userPhone!)}`);
         const data = await res.json();
-        if (data.success && Array.isArray(data.orders)) {
-          // Merge API orders with existing state (avoiding duplicates)
-          const merged = new Map<string, Order>();
-          data.orders.forEach((o: Order) => merged.set(o.id, o));
-          orders.forEach((o: Order) => {
+        if (cancelled || !data.success || !Array.isArray(data.orders)) return;
+
+        // Merge API orders with anything already held locally (dedup by id).
+        const merged = new Map<string, Order>();
+        data.orders.forEach((o: Order) => merged.set(o.id, o));
+        useUserSessionStore
+          .getState()
+          .orders.forEach((o: Order) => {
             if (!merged.has(o.id)) merged.set(o.id, o);
           });
-          const sorted = Array.from(merged.values()).sort(
-            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-          setOrders(sorted);
-        }
+        const sorted = Array.from(merged.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+        // Only write when something actually changed, otherwise the new array
+        // reference re-runs this effect and the request never settles.
+        const signature = sorted
+          .map((o) => `${o.id}:${o.orderStatus}:${o.total}`)
+          .join("|");
+        if (signature === lastSignature.current) return;
+        lastSignature.current = signature;
+
+        setOrders(sorted);
       } catch (err) {
         console.error("Failed to sync orders:", err);
       }
     }
 
     syncOrders();
-  }, [mounted, userPhone, orders, setOrders]);
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, userPhone, setOrders]);
 
   if (!mounted) return null;
 
@@ -408,8 +432,13 @@ export function ProfileClient() {
         {/* User Profile Card */}
         <div className="bg-white rounded-3xl border border-[#E3DACB] p-5 sm:p-7 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 pb-6 border-b border-[#E3DACB]/70">
-            {/* Left: Avatar & Info */}
-            <div className="flex items-center gap-4">
+            {/* Left: Avatar & Info. `min-w-0` lets this column shrink: as a flex
+                item its automatic minimum size is its content width, so without it
+                a wide child (the name input) refuses to shrink and drags the whole
+                card past the viewport. `flex-1` makes it claim the space left over
+                by the action buttons instead of only its natural width, which is
+                what kept the name field too cramped at tablet sizes. */}
+            <div className="flex items-center gap-4 min-w-0 flex-1">
               {/* Profile Image with Click to View / Change */}
               <button
                 type="button"
@@ -441,11 +470,11 @@ export function ProfileClient() {
 
               <div className="space-y-1 min-w-0">
                 {/* Name Row with Inline Edit */}
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap w-full min-w-0">
                   {isEditingName ? (
                     <form
                       onSubmit={handleSaveName}
-                      className="flex items-center gap-1.5 flex-wrap"
+                      className="flex items-center gap-1.5 flex-wrap w-full min-w-0"
                     >
                       <input
                         ref={nameInputRef}
@@ -456,7 +485,19 @@ export function ProfileClient() {
                         onKeyDown={(e) => {
                           if (e.key === "Escape") handleCancelName();
                         }}
-                        className="bg-white border-2 border-[#007A55] rounded-xl px-2.5 py-1 text-base sm:text-lg font-bold text-[#00241b] focus:outline-none shadow-2xs min-w-[150px] sm:min-w-[190px]"
+                        /* An <input> has an intrinsic flex base size of roughly
+                           200px (the default size=20), and at 768px only ~334px
+                           is left beside the avatar and the action buttons — not
+                           enough for the field plus both buttons, so Cancel used to
+                           drop onto its own line and overlap the avatar.
+
+                           Below sm: `basis-full min-w-0` gives the field the whole
+                           row and lets Save/Cancel wrap neatly underneath.
+                           From sm up: `flex-1` sets flex-basis to 0, so the field
+                           can no longer push the buttons onto a second line — it
+                           just takes whatever width is left. `max-w` stops it
+                           ballooning on wide screens. */
+                        className="w-full min-w-0 basis-full sm:flex-1 sm:max-w-[320px] bg-white border-2 border-[#007A55] rounded-xl px-2.5 py-1 text-base sm:text-lg font-bold text-[#00241b] focus:outline-none shadow-2xs"
                         placeholder="Enter name"
                         autoFocus
                       />
@@ -464,7 +505,7 @@ export function ProfileClient() {
                         id="save-name-btn"
                         type="submit"
                         title="Save Name"
-                        className="p-1.5 rounded-lg bg-[#007A55] hover:bg-[#006043] text-white transition-colors cursor-pointer shadow-xs active:scale-95"
+                        className="shrink-0 p-1.5 rounded-lg bg-[#007A55] hover:bg-[#006043] text-white transition-colors cursor-pointer shadow-xs active:scale-95"
                       >
                         <Check className="w-4 h-4 stroke-[2.5]" />
                       </button>
@@ -473,7 +514,7 @@ export function ProfileClient() {
                         type="button"
                         onClick={handleCancelName}
                         title="Cancel"
-                        className="p-1.5 rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-600 transition-colors cursor-pointer"
+                        className="shrink-0 p-1.5 rounded-lg border border-zinc-300 hover:bg-zinc-100 text-zinc-600 transition-colors cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -527,22 +568,24 @@ export function ProfileClient() {
               </div>
             </div>
 
-            {/* Right: Actions */}
-            <div className="flex items-center gap-3 self-start sm:self-auto">
+            {/* Right: Actions. `shrink-0` + `whitespace-nowrap` stop the labels
+                breaking onto a second line ("Order / Biryani", "Log / Out") once
+                the profile column takes its share of the row at tablet width. */}
+            <div className="flex items-center gap-3 self-start sm:self-auto shrink-0">
               <Link
                 href="/menu"
-                className="px-4 py-2 rounded-xl bg-[#003F32] hover:bg-[#002e24] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl bg-[#003F32] hover:bg-[#002e24] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 shrink-0 whitespace-nowrap"
               >
-                <ShoppingBag className="w-3.5 h-3.5 text-[#E8B94A]" />
+                <ShoppingBag className="w-3.5 h-3.5 text-[#E8B94A] shrink-0" />
                 <span>Order Biryani</span>
               </Link>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="px-3.5 py-2 rounded-xl border border-zinc-300 hover:bg-zinc-100 text-zinc-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-2 rounded-xl border border-zinc-300 hover:bg-zinc-100 text-zinc-700 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
                 title="Log Out of this session"
               >
-                <LogOut className="w-3.5 h-3.5 text-zinc-500" />
+                <LogOut className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                 <span>Log Out</span>
               </button>
             </div>

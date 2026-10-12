@@ -24,7 +24,7 @@ export function Footer() {
         <div className="md:hidden space-y-6 pb-6">
           {/* Top Row: Brand & Socials */}
           <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/10">
-            <BrandLogo size="footer" showText={true} />
+            <BrandLogo size="footer" showText={true} highlightFirstWord />
             <div className="flex items-center gap-2">
               <a
                 href={siteConfig.socialLinks.instagram}
@@ -148,7 +148,7 @@ export function Footer() {
         <div className="hidden md:flex flex-wrap items-start justify-between gap-x-6 gap-y-6 xl:flex-nowrap xl:gap-8 pb-6">
           {/* Column 1: Logo + Brand Identity */}
           <div className="flex items-center gap-3 shrink-0">
-            <BrandLogo size="footer" showText={true} />
+            <BrandLogo size="footer" showText={true} highlightFirstWord />
           </div>
 
           {/* Column 2: Quick Links */}
